@@ -69,7 +69,7 @@ app.use(helmet({
 
 // CORS Configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim().replace(/\/+$/, ''))
   : true;
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
@@ -129,7 +129,7 @@ if (process.env.NODE_ENV !== 'test') {
       // Keep-alive self-ping (prevents Render free tier spin-down)
       // Pings /api/health every 5 minutes
       // ──────────────────────────────────────────────────────────────
-      const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://announcement-portal-backend.onrender.com';
+      const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://gsc-announcement-backend.onrender.com';
       const PING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
       const keepAlive = () => {
