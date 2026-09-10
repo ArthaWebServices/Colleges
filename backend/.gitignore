@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+backend/.env
+frontend/.env
+.vercel/
+/.cache
+/.idea
+npm-debug.log
+pnpm-lock.yaml
+yarn.lock
+/.env.local

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+frontend/dist/
+.env
+backend/.env
+frontend/.env
+/.env.local
+backend/vapid-keys.json
+.vercel/
+/.cache
+/.idea
+npm-debug.log
+pnpm-lock.yaml
+yarn.lock
