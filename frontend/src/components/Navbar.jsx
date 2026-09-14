@@ -6,7 +6,7 @@ import { MagneticButton } from './reactbits/MagneticButton';
 import { useTheme } from '../context/ThemeContext';
 
 export const Navbar = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -155,6 +155,15 @@ export const Navbar = () => {
                   <span>HOD Portal</span>
                 </Link>
 
+                <button
+                  onClick={() => signOut({ redirectUrl: '/admin/login' })}
+                  className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white/15 hover:bg-rose-600 hover:border-rose-400 text-white transition-all border border-white/20 shadow-sm flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-200" />
+                  <span>Sign Out</span>
+                </button>
+
                 <div className="flex items-center justify-center p-0.5 bg-white/20 rounded-full border border-white/30">
                   <UserButton afterSignOutUrl="/admin/login" />
                 </div>
@@ -171,8 +180,17 @@ export const Navbar = () => {
 
             {/* Mobile UserButton if signed in */}
             {isSignedIn && (
-              <div className="md:hidden flex items-center justify-center p-0.5 bg-white/20 rounded-full border border-white/30">
-                <UserButton afterSignOutUrl="/admin/login" />
+              <div className="md:hidden flex items-center space-x-2">
+                <button
+                  onClick={() => signOut({ redirectUrl: '/admin/login' })}
+                  className="p-2 rounded-xl bg-white/15 hover:bg-rose-600 text-white border border-white/20 transition-colors flex items-center justify-center cursor-pointer"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4 text-rose-200" />
+                </button>
+                <div className="flex items-center justify-center p-0.5 bg-white/20 rounded-full border border-white/30">
+                  <UserButton afterSignOutUrl="/admin/login" />
+                </div>
               </div>
             )}
 
@@ -233,16 +251,28 @@ export const Navbar = () => {
             <span>Contact Us</span>
           </button>
 
-          <div className="pt-2 border-t border-sky-400/30 dark:border-slate-800">
+          <div className="pt-2 border-t border-sky-400/30 dark:border-slate-800 space-y-2">
             {isSignedIn ? (
-              <Link
-                to="/admin"
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full px-4 py-2.5 rounded-xl font-bold text-sm bg-amber-400 text-slate-900 flex items-center space-x-2 shadow-sm"
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span>HOD Portal</span>
-              </Link>
+              <>
+                <Link
+                  to="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full px-4 py-2.5 rounded-xl font-bold text-sm bg-amber-400 text-slate-900 flex items-center space-x-2 shadow-sm"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span>HOD Portal</span>
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut({ redirectUrl: '/admin/login' });
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl font-bold text-sm bg-rose-500/20 hover:bg-rose-600 text-white flex items-center space-x-2 border border-rose-300/30 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 text-rose-200" />
+                  <span>Sign Out</span>
+                </button>
+              </>
             ) : (
               <Link
                 to="/admin/login"

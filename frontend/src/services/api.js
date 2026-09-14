@@ -174,6 +174,19 @@ export const getAllAnnouncementsAudit = async (adminSecret) => {
 };
 
 /**
+ * Permanently delete a misleading or unauthorized announcement (Super-Admin)
+ */
+export const deleteAnnouncementBySuperAdmin = async (id, adminSecret) => {
+  const response = await api.delete(`/admin/announcements/${id}`, {
+    headers: {
+      'x-admin-secret': adminSecret,
+    },
+  });
+  return response.data;
+};
+
+
+/**
  * Fetch VAPID public key
  */
 export const getVapidPublicKey = async () => {

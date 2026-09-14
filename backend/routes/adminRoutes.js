@@ -319,4 +319,55 @@ router.delete(
   }
 );
 
+/**
+ * @route   DELETE /api/admin/announcements/:id
+ * @desc    Super-admin route to permanently delete any misleading or policy-violating notice
+ * @access  Protected by ADMIN_SECRET header
+ */
+router.delete(
+  '/announcements/:id',
+  authRateLimiter,
+  [param('id').isMongoId().withMessage('Invalid Announcement ID format.')],
+  async (req, res) => {
+    // Validate request input BEFORE touching database
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array().map((err) => err.msg),
+      });
+    }
+
+    try {
+      if (!verifyAdminSecret(req, res)) return;
+
+      const Announcement = require('../models/Announcement');
+      const announcement = await Announcement.findById(req.params.id);
+
+      if (!announcement) {
+        return res.status(404).json({
+          success: false,
+          error: 'Announcement not found.',
+        });
+      }
+
+      await announcement.deleteOne();
+      console.log(`[DELETE /api/admin/announcements/:id] Super-admin deleted notice: ${req.params.id} ("${announcement.title}")`);
+
+      res.json({
+        success: true,
+        message: `Announcement "${announcement.title}" was permanently removed by Super-Admin.`,
+        deletedId: req.params.id,
+      });
+    } catch (error) {
+      console.error('[DELETE /api/admin/announcements/:id Error]:', error.message);
+      res.status(500).json({
+        success: false,
+        error: 'Error deleting announcement: ' + error.message,
+      });
+    }
+  }
+);
+
 module.exports = router;
+
