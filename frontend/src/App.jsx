@@ -8,6 +8,7 @@ import AdminSignUp from './pages/AdminSignUp';
 import AdminDashboard from './pages/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import NotFound from './pages/NotFound';
 
 export function App() {
   const location = useLocation();
@@ -42,6 +43,9 @@ export function App() {
           />
           {/* Any unhandled /admin/* sub-path redirects to /admin */}
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
+          
+          {/* Catch-all route for any other unhandled paths */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       {!isClerkInternalRoute && <Footer />}
