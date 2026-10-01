@@ -130,8 +130,7 @@ const announcementSchema = new mongoose.Schema(
     toJSON: {
       transform: (doc, ret) => {
         if (ret.attachmentUrl && ret.attachmentUrl.startsWith('http')) {
-          const backendUrl = process.env.RENDER_EXTERNAL_URL || (process.env.NODE_ENV === 'production' ? 'https://gsc-announcement-backend.onrender.com' : 'http://localhost:5000');
-          ret.attachmentUrl = `${backendUrl}/api/documents/${ret._id}`;
+          ret.attachmentUrl = `/api/documents/${ret._id}`;
         }
         return ret;
       }

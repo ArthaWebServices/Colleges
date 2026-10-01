@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/documents/:id",
+      "destination": "https://gsc-announcement-backend.onrender.com/api/documents/:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
