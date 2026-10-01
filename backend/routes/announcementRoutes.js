@@ -496,7 +496,7 @@ router.put(
       announcement.isEmergency = (targetType === 'EMERGENCY');
       if (eventDate !== undefined) announcement.eventDate = eventDate && !isNaN(Date.parse(eventDate)) ? new Date(eventDate) : null;
       if (attachmentUrl !== undefined) {
-        if (attachmentUrl === null || attachmentUrl === '' || !attachmentUrl.startsWith('/documents/')) {
+        if (attachmentUrl === null || attachmentUrl === '' || !attachmentUrl.includes('/api/documents/')) {
           announcement.attachmentUrl = attachmentUrl || null;
         }
       }
