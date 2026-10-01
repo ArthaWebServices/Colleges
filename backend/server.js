@@ -91,6 +91,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/documents', require('./routes/documentRoutes'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

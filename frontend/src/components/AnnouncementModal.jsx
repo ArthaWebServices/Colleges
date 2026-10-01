@@ -621,9 +621,8 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
                         <div>
                           <span className="sm:hidden text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Time</span>
                           <input
-                            type="text"
+                            type="time"
                             value={entry.time}
-                            placeholder="e.g. 10:00 - 12:00"
                             onChange={(e) => {
                               const newEntries = [...timetableEntries];
                               newEntries[idx].time = e.target.value;

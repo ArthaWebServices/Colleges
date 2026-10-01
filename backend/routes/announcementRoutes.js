@@ -495,7 +495,11 @@ router.put(
       if (isPinned !== undefined) announcement.isPinned = Boolean(isPinned);
       announcement.isEmergency = (targetType === 'EMERGENCY');
       if (eventDate !== undefined) announcement.eventDate = eventDate && !isNaN(Date.parse(eventDate)) ? new Date(eventDate) : null;
-      if (attachmentUrl !== undefined) announcement.attachmentUrl = attachmentUrl || null;
+      if (attachmentUrl !== undefined) {
+        if (attachmentUrl === null || attachmentUrl === '' || !attachmentUrl.startsWith('/documents/')) {
+          announcement.attachmentUrl = attachmentUrl || null;
+        }
+      }
       if (expiresAt !== undefined) announcement.expiresAt = expiresAt ? new Date(expiresAt) : null;
       if (status !== undefined && ['DRAFT', 'PUBLISHED'].includes(status)) announcement.status = status;
       if (type !== undefined && ['NOTICE', 'EVENT', 'TIMETABLE', 'EMERGENCY'].includes(String(type).toUpperCase())) {

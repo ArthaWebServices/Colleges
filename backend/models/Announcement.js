@@ -127,6 +127,14 @@ const announcementSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      transform: (doc, ret) => {
+        if (ret.attachmentUrl && ret.attachmentUrl.startsWith('http')) {
+          ret.attachmentUrl = `/documents/${ret._id}`;
+        }
+        return ret;
+      }
+    }
   }
 );
 
