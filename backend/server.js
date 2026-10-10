@@ -10,6 +10,7 @@ const courseRoutes = require('./routes/courseRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const captchaRoutes = require('./routes/captchaRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 
@@ -89,6 +90,7 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/captcha', captchaRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/documents', require('./routes/documentRoutes'));
@@ -128,10 +130,9 @@ if (process.env.NODE_ENV !== 'test') {
 
       // ──────────────────────────────────────────────────────────────
       // Keep-alive self-ping (prevents Render free tier spin-down)
-      // Pings /api/health every 5 minutes
       // ──────────────────────────────────────────────────────────────
       const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://gsc-announcement-backend.onrender.com';
-      const PING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+      const PING_INTERVAL_MS = 5 * 60 * 1000;
 
       const keepAlive = () => {
         const url = new URL('/api/health', RENDER_URL);
@@ -143,10 +144,45 @@ if (process.env.NODE_ENV !== 'test') {
         });
       };
 
-      // Trigger immediate initial ping on server startup
       keepAlive();
       setInterval(keepAlive, PING_INTERVAL_MS);
       console.log(`[Keep-Alive] 🔁 Self-ping started → ${RENDER_URL}/api/health (every 5 min)`);
+
+      // ──────────────────────────────────────────────────────────────
+      // Scheduled Publishing Cron — runs every minute
+      // Finds DRAFT announcements with publishAt <= now and publishes them
+      // ──────────────────────────────────────────────────────────────
+      const cron = require('node-cron');
+      const Announcement = require('./models/Announcement');
+      const { triggerPushNotifications } = require('./utils/notificationDispatcher');
+
+      cron.schedule('* * * * *', async () => {
+        try {
+          const now = new Date();
+          const scheduled = await Announcement.find({
+            status: 'DRAFT',
+            publishAt: { $lte: now, $ne: null },
+          });
+
+          if (scheduled.length === 0) return;
+
+          console.log(`[Scheduler] 📅 Publishing ${scheduled.length} scheduled announcement(s)...`);
+
+          for (const ann of scheduled) {
+            ann.status = 'PUBLISHED';
+            ann.publishAt = null; // clear the field after publishing
+            await ann.save();
+            triggerPushNotifications(ann, app.get('vapidKeys')).catch((err) =>
+              console.error(`[Scheduler Push Error] ${ann._id}:`, err.message)
+            );
+            console.log(`[Scheduler] ✅ Published: "${ann.title}" (${ann._id})`);
+          }
+        } catch (err) {
+          console.error('[Scheduler] ❌ Error during scheduled publish check:', err.message);
+        }
+      });
+
+      console.log('[Scheduler] ⏰ Scheduled publishing cron started (every minute).');
     });
   });
 }

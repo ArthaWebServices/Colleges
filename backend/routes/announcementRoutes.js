@@ -274,7 +274,7 @@ router.post(
     }
 
     try {
-      const { title, content, courseCodes, isPinned, isEmergency, eventDate, attachmentUrl, expiresAt, status, type, timetableEntries, targetYears } = req.body;
+      const { title, content, courseCodes, isPinned, isEmergency, eventDate, attachmentUrl, expiresAt, status, type, timetableEntries, targetYears, publishAt } = req.body;
       
       const targetType = type && ['NOTICE', 'EVENT', 'TIMETABLE', 'EMERGENCY'].includes(String(type).toUpperCase()) ? String(type).toUpperCase() : 'NOTICE';
 
@@ -367,7 +367,9 @@ router.post(
         eventDate: eventDate && !isNaN(Date.parse(eventDate)) ? new Date(eventDate) : null,
         attachmentUrl: attachmentUrl || null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
-        status: status && ['DRAFT', 'PUBLISHED'].includes(status) ? status : 'PUBLISHED',
+        publishAt: publishAt && !isNaN(Date.parse(publishAt)) ? new Date(publishAt) : null,
+        // Force DRAFT if publishAt is set so the cron job handles publishing
+        status: (publishAt && !isNaN(Date.parse(publishAt))) ? 'DRAFT' : (status && ['DRAFT', 'PUBLISHED'].includes(status) ? status : 'PUBLISHED'),
         type: targetType,
         timetableEntries: targetType === 'TIMETABLE' ? timetableEntries : undefined,
         targetYears: resolvedYears,
@@ -445,7 +447,7 @@ router.put(
         });
       }
 
-      const { title, content, courseCodes, isPinned, isEmergency, eventDate, attachmentUrl, expiresAt, status, type, timetableEntries, targetYears } = req.body;
+      const { title, content, courseCodes, isPinned, isEmergency, eventDate, attachmentUrl, expiresAt, status, type, timetableEntries, targetYears, publishAt } = req.body;
 
       const targetType = type && ['NOTICE', 'EVENT', 'TIMETABLE', 'EMERGENCY'].includes(String(type).toUpperCase()) ? String(type).toUpperCase() : announcement.type;
 
@@ -501,7 +503,15 @@ router.put(
         }
       }
       if (expiresAt !== undefined) announcement.expiresAt = expiresAt ? new Date(expiresAt) : null;
-      if (status !== undefined && ['DRAFT', 'PUBLISHED'].includes(status)) announcement.status = status;
+      if (publishAt !== undefined) {
+        announcement.publishAt = publishAt && !isNaN(Date.parse(publishAt)) ? new Date(publishAt) : null;
+        if (announcement.publishAt) {
+          announcement.status = 'DRAFT'; // Force DRAFT if it's scheduled
+        }
+      }
+      if (status !== undefined && ['DRAFT', 'PUBLISHED'].includes(status) && !announcement.publishAt) {
+        announcement.status = status;
+      }
       if (type !== undefined && ['NOTICE', 'EVENT', 'TIMETABLE', 'EMERGENCY'].includes(String(type).toUpperCase())) {
         announcement.type = String(type).toUpperCase();
       }

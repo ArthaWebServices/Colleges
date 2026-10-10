@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GSC Announcement Portal Architecture",
+    "output": "architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "super_admin_actor", "type": "external", "label": "Super Admin", "sublabel": "Principal / Central IT", "pos": [40, 40], "size": [130, 60], "tag": "College Authority" },
+    { "id": "hod_actor", "type": "external", "label": "Department HOD", "sublabel": "Faculty / Notice Author", "pos": [40, 150], "size": [130, 60], "tag": "Department Staff" },
+    { "id": "student_actor", "type": "external", "label": "Students / Public", "sublabel": "Notice Consumers", "pos": [40, 390], "size": [130, 60], "tag": "Public Readers" },
+
+    { "id": "super_admin_ui", "type": "frontend", "label": "Super-Admin Panel", "sublabel": "/superadmin Route", "pos": [280, 40], "size": [150, 60], "tag": "x-admin-secret" },
+    { "id": "hod_admin_ui", "type": "frontend", "label": "HOD Admin Panel", "sublabel": "/admin Route", "pos": [280, 150], "size": [150, 60], "tag": "isApproved Gate" },
+    { "id": "public_ui", "type": "frontend", "label": "Public Feed Portal", "sublabel": "/ Student Feed", "pos": [280, 390], "size": [150, 60], "tag": "Zero-Auth Filtering" },
+
+    { "id": "admin_secret_gate", "type": "security", "label": "Secret Auth Gate", "sublabel": "crypto.timingSafeEqual", "pos": [560, 40], "size": [150, 60], "tag": "ADMIN_SECRET" },
+    { "id": "clerk_auth", "type": "security", "label": "Clerk Auth Service", "sublabel": "OAuth & Session Token", "pos": [560, 150], "size": [150, 60], "tag": "JWT + publicMetadata" },
+
+    { "id": "api_server", "type": "backend", "label": "Express API Server", "sublabel": "Node.js REST Services", "pos": [800, 240], "size": [170, 84], "tag": "RBAC & Scoped Routes" },
+
+    { "id": "clerk_mgmt_api", "type": "external", "label": "Clerk Admin SDK", "sublabel": "clerkClient API", "pos": [1100, 40], "size": [150, 60], "tag": "HOD Approval & Scope" },
+    { "id": "mongodb", "type": "database", "label": "MongoDB Atlas", "sublabel": "Mongoose Models", "pos": [1100, 180], "size": [150, 60], "tag": "Announcements & Courses" },
+    { "id": "uploadthing", "type": "cloud", "label": "UploadThing", "sublabel": "Memory Storage & CDN", "pos": [1100, 320], "size": [150, 60], "tag": "PDF Notice Circulars" },
+    { "id": "web_push", "type": "messagebus", "label": "Web Push (VAPID)", "sublabel": "Push Service Dispatcher", "pos": [1100, 460], "size": [150, 60], "tag": "Service Worker Alerts" }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Client Application (React + Vite SPA)",
+      "wraps": ["super_admin_ui", "hod_admin_ui", "public_ui"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Backend REST Architecture (Render)",
+      "wraps": ["admin_secret_gate", "api_server"]
+    }
+  ],
+  "connections": [
+    { "id": "conn-super-ui", "from": "super_admin_actor", "to": "super_admin_ui", "label": "enters secret", "variant": "security" },
+    { "id": "conn-hod-ui", "from": "hod_actor", "to": "hod_admin_ui", "label": "signs in", "variant": "emphasis" },
+    { "id": "conn-student-ui", "from": "student_actor", "to": "public_ui", "label": "views feed" },
+
+    { "id": "conn-super-gate", "from": "super_admin_ui", "to": "admin_secret_gate", "label": "x-admin-secret", "variant": "security" },
+    { "id": "conn-gate-api", "from": "admin_secret_gate", "to": "api_server", "label": "authenticated admin", "variant": "security", "toSide": "top" },
+
+    { "id": "conn-hod-clerk", "from": "hod_admin_ui", "to": "clerk_auth", "label": "Clerk session token", "variant": "security" },
+    { "id": "conn-hod-api", "from": "hod_admin_ui", "to": "api_server", "label": "manage notices (JWT)", "variant": "emphasis" },
+    { "id": "conn-clerk-api", "from": "clerk_auth", "to": "api_server", "label": "validate isApproved", "variant": "security" },
+
+    { "id": "conn-public-api", "from": "public_ui", "to": "api_server", "label": "GET published feed" },
+
+    { "id": "conn-api-clerk-mgmt", "from": "api_server", "to": "clerk_mgmt_api", "label": "approve & set scopes", "variant": "security", "fromSide": "top" },
+    { "id": "conn-api-db", "from": "api_server", "to": "mongodb", "label": "store announcements" },
+    { "id": "conn-api-upload", "from": "api_server", "to": "uploadthing", "label": "upload & proxy circular PDFs" },
+    { "id": "conn-api-push", "from": "api_server", "to": "web_push", "label": "dispatch push alerts" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Super-Admin Panel (/superadmin)",
+      "items": [
+        "Secret-Gated Access: Protected by x-admin-secret validated server-side with crypto.timingSafeEqual",
+        "HOD Lifecycle Management: Reviews faculty signups via Clerk SDK, toggling isApproved to grant write access",
+        "Course Scope Provisioning: Sets allowedCourses permissions (e.g. ['BSc IT'] or wildcard ['*']) per HOD",
+        "Global Audit: Full oversight over all notices across departments with instant deletion rights"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "HOD Admin Panel (/admin)",
+      "items": [
+        "Clerk Authentication: Faculty sign in via Clerk; blocked server-side (403) until Super-Admin approves account",
+        "Department Announcements: Publish, draft, pin, and update notices and examination timetables",
+        "Strict Permission Guard: Server enforces ownership (postedBy === user) and allowedCourses on every write",
+        "Document Attachments: Uploads circular PDFs and images up to 16MB via UploadThing memory storage"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Public Portal & Notifications",
+      "items": [
+        "Zero-Auth Student Feed: Public access filtering by course, year, notice type, and date",
+        "Persistence Tier: MongoDB stores sanitized announcements, courses, and push subscriptions",
+        "Real-Time Web Push: Dispatches VAPID push alerts to subscribed student devices on publish",
+        "Secure Document Proxy: Circular PDFs are proxied via backend (/api/documents) to hide raw UploadThing URLs"
+      ]
+    }
+  ]
+}

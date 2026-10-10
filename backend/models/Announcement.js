@@ -87,6 +87,10 @@ const announcementSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    publishAt: {
+      type: Date,
+      default: null,
+    },
     status: {
       type: String,
       enum: ['DRAFT', 'PUBLISHED'],

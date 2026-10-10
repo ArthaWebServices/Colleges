@@ -103,6 +103,26 @@ export const deleteAnnouncement = async (id, getToken) => {
 };
 
 /**
+ * Generate a fresh captcha SVG and signed token
+ */
+export const getCaptcha = async () => {
+  const response = await api.get('/captcha/generate');
+  return response.data;
+};
+
+/**
+ * Verify Super-Admin Secret with Captcha challenge
+ */
+export const verifySuperAdminLogin = async (adminSecret, captchaText, captchaToken) => {
+  const response = await api.post('/admin/verify-login', {
+    adminSecret,
+    captchaText,
+    captchaToken,
+  });
+  return response.data;
+};
+
+/**
  * Fetch all registered HOD accounts (Super-Admin)
  */
 export const getHodList = async (adminSecret) => {
@@ -207,5 +227,45 @@ export const subscribeNotifications = async (payload) => {
  */
 export const unsubscribeNotifications = async (endpoint) => {
   const response = await api.post('/notifications/unsubscribe', { endpoint });
+  return response.data;
+};
+
+/**
+ * Super-Admin: edit any announcement
+ */
+export const editAnnouncementBySuperAdmin = async (id, data, adminSecret) => {
+  const response = await api.put(`/admin/announcements/${id}`, data, {
+    headers: { 'x-admin-secret': adminSecret },
+  });
+  return response.data;
+};
+
+/**
+ * Super-Admin: add a new course
+ */
+export const addCourse = async (data, adminSecret) => {
+  const response = await api.post('/admin/courses', data, {
+    headers: { 'x-admin-secret': adminSecret },
+  });
+  return response.data;
+};
+
+/**
+ * Super-Admin: delete a course by code
+ */
+export const deleteCourse = async (code, adminSecret) => {
+  const response = await api.delete(`/admin/courses/${code}`, {
+    headers: { 'x-admin-secret': adminSecret },
+  });
+  return response.data;
+};
+
+/**
+ * Super-Admin: broadcast emergency alert directly
+ */
+export const broadcastEmergency = async (data, adminSecret) => {
+  const response = await api.post('/admin/broadcast-emergency', data, {
+    headers: { 'x-admin-secret': adminSecret },
+  });
   return response.data;
 };

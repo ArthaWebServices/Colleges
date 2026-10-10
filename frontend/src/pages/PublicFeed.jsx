@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Bell, Layers, RefreshCw, AlertCircle, AlertTriangle, Bookmark, Calendar, GraduationCap, ArrowUp, BellRing, Check, Loader2 } from 'lucide-react';
+import { Search, Bell, Layers, RefreshCw, AlertCircle, AlertTriangle, Bookmark, Calendar, GraduationCap, ArrowUp, BellRing, Check, Loader2, CalendarDays, X } from 'lucide-react';
 import { getCourses, getAnnouncements, getVapidPublicKey, subscribeNotifications, unsubscribeNotifications } from '../services/api';
 import { getBookmarks } from '../utils/bookmarks';
 import CourseFilterChips from '../components/CourseFilterChips';
@@ -368,6 +368,63 @@ export const PublicFeed = () => {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Date Range Filter */}
+        <div className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+          <div className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0">
+            <CalendarDays className="w-3.5 h-3.5 mr-1 text-violet-500" />
+            Date:
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            {/* From Date */}
+            <div className="relative">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                max={endDate || undefined}
+                title="Filter from date"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400/40 dark:focus:ring-violet-500/40 transition-all cursor-pointer"
+              />
+            </div>
+
+            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium shrink-0">to</span>
+
+            {/* To Date */}
+            <div className="relative">
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || undefined}
+                title="Filter to date"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400/40 dark:focus:ring-violet-500/40 transition-all cursor-pointer"
+              />
+            </div>
+
+            {/* Clear dates button — only shown when a date is set */}
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 text-xs font-bold hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
+                title="Clear date filter"
+              >
+                <X className="w-3 h-3" />
+                Clear dates
+              </button>
+            )}
+
+            {/* Active date range badge */}
+            {startDate && endDate && (
+              <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 px-2 py-0.5 rounded-full">
+                {new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                {' → '}
+                {new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            )}
           </div>
         </div>
       </div>

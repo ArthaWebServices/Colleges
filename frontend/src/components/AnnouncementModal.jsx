@@ -19,6 +19,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [status, setStatus] = useState('PUBLISHED');
+  const [publishAt, setPublishAt] = useState('');
   const [type, setType] = useState('NOTICE');
 
   const [timetableEntries, setTimetableEntries] = useState([{ subject: '', date: '', time: '', room: '' }]);
@@ -55,6 +56,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
       setAttachmentUrl(initialData.attachmentUrl || '');
       setExpiresAt(initialData.expiresAt ? new Date(initialData.expiresAt).toISOString().split('T')[0] : '');
       setStatus(initialData.status || 'PUBLISHED');
+      setPublishAt(initialData.publishAt ? new Date(initialData.publishAt).toISOString().slice(0, 16) : '');
       setType(initialData.type || 'NOTICE');
 
       if (initialData.type === 'TIMETABLE' && initialData.timetableEntries?.length > 0) {
@@ -84,6 +86,7 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
       setAttachmentUrl('');
       setExpiresAt('');
       setStatus('PUBLISHED');
+      setPublishAt('');
       setType('NOTICE');
       setTimetableEntries([{ subject: '', date: '', time: '', room: '' }]);
       setSelectedYears(['FY', 'SY', 'TY']);
@@ -216,7 +219,9 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
         eventDate: type === 'EVENT' && eventDate ? new Date(eventDate).toISOString() : null,
         attachmentUrl: finalAttachmentUrl || null,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-        status: forcedStatus || status,
+        publishAt: publishAt ? new Date(publishAt).toISOString() : null,
+        // If a publishAt time is set, force to DRAFT so cron publishes it later
+        status: publishAt ? 'DRAFT' : (forcedStatus || status),
         type,
         timetableEntries: type === 'TIMETABLE' ? timetableEntries.map(e => ({
           ...e,
@@ -735,9 +740,9 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
             </div>
           </div>
 
-          {/* Options: Pin & Expiry Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
-            <div className="flex items-center space-x-2">
+          {/* Options: Pin & Expiry Date & Schedule */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <div className="flex items-center space-x-2 sm:col-span-3">
               <input
                 type="checkbox"
                 id="isPinnedCheck"
@@ -764,6 +769,25 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
                 />
               </div>
             </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-violet-500" />
+                Schedule for Later (Optional)
+              </label>
+              <input
+                type="datetime-local"
+                value={publishAt}
+                onChange={(e) => setPublishAt(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400/40 text-xs"
+              />
+              {publishAt && (
+                <p className="mt-1 text-[11px] text-violet-600 dark:text-violet-400 font-semibold">
+                  ⏰ Will auto-publish on {new Date(publishAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Footer Buttons */}
@@ -777,23 +801,31 @@ export const AnnouncementModal = ({ isOpen, onClose, onSave, initialData = null,
               Cancel
             </button>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {!publishAt && (
+                <button
+                  type="button"
+                  onClick={(e) => handleSubmit(e, 'DRAFT')}
+                  disabled={isSubmitting || isUploading}
+                  className="w-full sm:w-auto px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs transition-shadow shadow-sm flex items-center justify-center gap-2"
+                >
+                  {(isSubmitting || isUploading) && status === 'DRAFT' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>Save as Draft</span>
+                </button>
+              )}
               <button
                 type="button"
-                onClick={(e) => handleSubmit(e, 'DRAFT')}
+                onClick={(e) => handleSubmit(e, publishAt ? null : 'PUBLISHED')}
                 disabled={isSubmitting || isUploading}
-                className="w-full sm:w-auto px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs transition-shadow shadow-sm flex items-center justify-center gap-2"
+                className={`w-full sm:w-auto px-5 py-2 font-bold rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
+                  publishAt
+                    ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                    : 'bg-college-navy hover:bg-college-navyLight text-college-gold'
+                }`}
               >
-                {(isSubmitting || isUploading) && status === 'DRAFT' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>Save as Draft</span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleSubmit(e, 'PUBLISHED')}
-                disabled={isSubmitting || isUploading}
-                className="w-full sm:w-auto px-5 py-2 bg-college-navy hover:bg-college-navyLight text-college-gold font-bold rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-2"
-              >
-                {(isSubmitting || isUploading) && status === 'PUBLISHED' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                <span>{isUploading ? 'Uploading File...' : isSubmitting ? 'Saving...' : 'Publish Announcement'}</span>
+                {(isSubmitting || isUploading) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>
+                  {isUploading ? 'Uploading File...' : isSubmitting ? 'Saving...' : publishAt ? '⏰ Schedule Announcement' : 'Publish Announcement'}
+                </span>
               </button>
             </div>
           </div>

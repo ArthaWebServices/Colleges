@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-react';
-import { Plus, Bell, RefreshCw, AlertCircle, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Plus, Bell, RefreshCw, AlertCircle, ShieldCheck, CheckCircle2, LogOut, ShieldAlert } from 'lucide-react';
 import { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getCourses } from '../services/api';
 import AnnouncementCard from '../components/AnnouncementCard';
 import AnnouncementModal from '../components/AnnouncementModal';
@@ -101,6 +101,28 @@ export const AdminDashboard = () => {
       setIsDeleting(false);
     }
   };
+
+  if (error && (error.toLowerCase().includes('pending') || error.toLowerCase().includes('forbidden'))) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+        <ShieldAlert className="w-20 h-20 text-amber-500 mb-6" />
+        <h2 className="text-3xl font-heading font-extrabold text-slate-800 dark:text-white mb-2">Account Pending Approval</h2>
+        <p className="text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-8 leading-relaxed">
+          Your HOD account has been created successfully but is currently waiting for SuperAdmin approval. You will gain access to the dashboard once your account is verified and assigned to your departments.
+        </p>
+        <button
+          onClick={() => {
+            const auth = window.Clerk;
+            if (auth) auth.signOut({ redirectUrl: '/admin/login' });
+          }}
+          className="px-6 py-3 bg-college-navy hover:bg-college-navyLight text-college-gold rounded-xl font-bold transition-all shadow-md flex items-center space-x-2"
+        >
+          <LogOut className="w-5 h-5" />
+          <span>Sign Out</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full transition-colors duration-300">

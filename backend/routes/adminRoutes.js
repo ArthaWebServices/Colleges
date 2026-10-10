@@ -6,6 +6,7 @@ const { authRateLimiter } = require('../middleware/rateLimiter');
 const crypto = require('crypto');
 
 const { body, param, validationResult } = require('express-validator');
+const { verifyCaptcha } = require('../utils/captchaHelper');
 
 /**
  * Helper to verify Admin Secret header (Timing-attack resistant)
@@ -43,6 +44,65 @@ const verifyAdminSecret = (req, res) => {
 
   return true;
 };
+
+/**
+ * @route   POST /api/admin/verify-login
+ * @desc    Validate Super-Admin Secret along with Captcha challenge
+ * @access  Protected by authRateLimiter
+ */
+router.post(
+  '/verify-login',
+  authRateLimiter,
+  [
+    body('adminSecret').isString().notEmpty().withMessage('Admin Secret is required.'),
+    body('captchaText').isString().notEmpty().withMessage('Captcha response is required.'),
+    body('captchaToken').isString().notEmpty().withMessage('Captcha token is required.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: errors.array()[0].msg,
+      });
+    }
+
+    const { adminSecret, captchaText, captchaToken } = req.body;
+
+    // 1. First verify Captcha
+    const captchaResult = verifyCaptcha(captchaText, captchaToken);
+    if (!captchaResult.valid) {
+      return res.status(400).json({
+        success: false,
+        error: captchaResult.error || 'Invalid or expired captcha. Please refresh and try again.',
+      });
+    }
+
+    // 2. Then verify Admin Secret
+    const expectedSecret = process.env.ADMIN_SECRET || (process.env.NODE_ENV === 'production' ? null : 'super_secret_admin_approval_key_123');
+    if (!expectedSecret) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server Misconfiguration: ADMIN_SECRET environment variable is not set.',
+      });
+    }
+
+    const inputBuf = Buffer.from(adminSecret);
+    const expectedBuf = Buffer.from(expectedSecret);
+
+    if (inputBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(inputBuf, expectedBuf)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Invalid Admin Secret key.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Super-Admin authentication successful.',
+    });
+  }
+);
 
 /**
  * @route   GET /api/admin/hods
@@ -369,5 +429,154 @@ router.delete(
   }
 );
 
-module.exports = router;
+/**
+ * @route   PUT /api/admin/announcements/:id
+ * @desc    Super-admin: edit any announcement (content / title correction)
+ * @access  Protected by ADMIN_SECRET header
+ */
+router.put(
+  '/announcements/:id',
+  authRateLimiter,
+  [
+    param('id').isMongoId().withMessage('Invalid Announcement ID format.'),
+    body('title').optional().trim().notEmpty().withMessage('Title cannot be empty.'),
+    body('content').optional(),
+    body('isPinned').optional().isBoolean(),
+    body('status').optional().isIn(['DRAFT', 'PUBLISHED']).withMessage('status must be DRAFT or PUBLISHED.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array().map((e) => e.msg) });
+    }
+    try {
+      if (!verifyAdminSecret(req, res)) return;
+      const Announcement = require('../models/Announcement');
+      const announcement = await Announcement.findById(req.params.id);
+      if (!announcement) {
+        return res.status(404).json({ success: false, error: 'Announcement not found.' });
+      }
+      const sanitizeHtml = require('sanitize-html');
+      const { title, content, isPinned, status } = req.body;
+      if (title !== undefined) announcement.title = title;
+      if (content !== undefined) announcement.content = sanitizeHtml(String(content), {
+        allowedTags: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'span', 'code', 'pre', 'h1', 'h2', 'h3', 'blockquote', 'u', 's'],
+        allowedAttributes: { a: ['href', 'target', 'rel'], '*': ['style', 'class'] },
+        allowedSchemes: ['http', 'https', 'mailto'],
+      });
+      if (isPinned !== undefined) announcement.isPinned = Boolean(isPinned);
+      if (status !== undefined) announcement.status = status;
+      await announcement.save();
+      console.log(`[PUT /api/admin/announcements/:id] Super-admin edited: "${announcement.title}"`);
+      res.json({ success: true, message: 'Announcement updated by Super-Admin.', data: announcement });
+    } catch (error) {
+      console.error('[PUT /api/admin/announcements/:id Error]:', error.message);
+      res.status(500).json({ success: false, error: 'Error updating: ' + error.message });
+    }
+  }
+);
 
+/**
+ * @route   POST /api/admin/courses
+ * @desc    Super-admin: add a new course
+ * @access  Protected by ADMIN_SECRET header
+ */
+router.post(
+  '/courses',
+  authRateLimiter,
+  [
+    body('code').trim().notEmpty().withMessage('Course code is required.'),
+    body('name').trim().notEmpty().withMessage('Course name is required.'),
+    body('stream').trim().notEmpty().withMessage('Stream is required.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array().map((e) => e.msg) });
+    try {
+      if (!verifyAdminSecret(req, res)) return;
+      const Course = require('../models/Course');
+      const { code, name, stream } = req.body;
+      const existing = await Course.findOne({ code: code.trim().toUpperCase() });
+      if (existing) return res.status(409).json({ success: false, error: `Course "${code.toUpperCase()}" already exists.` });
+      const course = await Course.create({ code: code.trim().toUpperCase(), name: name.trim(), stream: stream.trim() });
+      res.status(201).json({ success: true, message: 'Course added.', data: course });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Error adding course: ' + error.message });
+    }
+  }
+);
+
+/**
+ * @route   DELETE /api/admin/courses/:code
+ * @desc    Super-admin: remove a course by code
+ * @access  Protected by ADMIN_SECRET header
+ */
+router.delete(
+  '/courses/:code',
+  authRateLimiter,
+  [param('code').trim().notEmpty().withMessage('Course code is required.')],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array().map((e) => e.msg) });
+    try {
+      if (!verifyAdminSecret(req, res)) return;
+      const Course = require('../models/Course');
+      const deleted = await Course.findOneAndDelete({ code: req.params.code.toUpperCase() });
+      if (!deleted) return res.status(404).json({ success: false, error: 'Course not found.' });
+      res.json({ success: true, message: `Course "${deleted.code}" removed.` });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Error removing course: ' + error.message });
+    }
+  }
+);
+
+/**
+ * @route   POST /api/admin/broadcast-emergency
+ * @desc    Super-admin broadcasts an emergency alert to all subscribers (bypasses HOD)
+ * @access  Protected by ADMIN_SECRET header
+ */
+router.post(
+  '/broadcast-emergency',
+  authRateLimiter,
+  [
+    body('title').trim().notEmpty().withMessage('Title is required.'),
+    body('content').trim().notEmpty().withMessage('Content is required.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array().map((e) => e.msg) });
+    try {
+      if (!verifyAdminSecret(req, res)) return;
+      const sanitizeHtml = require('sanitize-html');
+      const Announcement = require('../models/Announcement');
+      const cleanContent = sanitizeHtml(String(req.body.content), {
+        allowedTags: ['b', 'i', 'em', 'strong', 'p', 'br', 'ul', 'li'],
+        allowedAttributes: {},
+      });
+      const emergency = await Announcement.create({
+        title: req.body.title,
+        content: cleanContent,
+        courseCodes: ['ALL'],
+        postedBy: 'super-admin',
+        postedByName: 'Super Admin',
+        postedByEmail: '',
+        isPinned: true,
+        isEmergency: true,
+        type: 'EMERGENCY',
+        status: 'PUBLISHED',
+        targetYears: ['FY', 'SY', 'TY'],
+      });
+      const { triggerPushNotifications } = require('../utils/notificationDispatcher');
+      triggerPushNotifications(emergency, req.app.get('vapidKeys')).catch((err) =>
+        console.error('[Emergency Broadcast Push Error]:', err.message)
+      );
+      console.log(`[POST /api/admin/broadcast-emergency] Broadcast: "${req.body.title}"`);
+      res.status(201).json({ success: true, message: 'Emergency alert broadcast successfully.', data: emergency });
+    } catch (error) {
+      console.error('[POST /api/admin/broadcast-emergency Error]:', error.message);
+      res.status(500).json({ success: false, error: 'Error broadcasting emergency: ' + error.message });
+    }
+  }
+);
+
+module.exports = router;

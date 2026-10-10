@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "efa9926b-60cd-4df5-9a1d-3995422fcb0c",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\comp\\Desktop\\College\\architecture.candidate.json",
+  "output": "C:\\Users\\comp\\Desktop\\College\\architecture.html",
+  "specification": {
+    "sha256": "d7dd2ab03f6e844e02065629a790fa04a90dc21406a630b89a32295e35fa2b5c",
+    "bytes": 6164
+  },
+  "artifact": {
+    "sha256": "758a71d65d02e0cc3152e668f39cbbf2111235d27ed460e142ee1ce403e8baf7",
+    "bytes": 778285
+  }
+}

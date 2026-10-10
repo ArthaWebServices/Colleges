@@ -19,11 +19,25 @@ import {
   Trash2,
   AlertTriangle,
   X,
-  Loader2
+  Loader2,
+  Edit3
 } from 'lucide-react';
-import { getHodList, toggleHodApproval, getAllAnnouncementsAudit, assignHodCourses, deleteHodAccount, deleteAnnouncementBySuperAdmin, getCourses } from '../services/api';
-
-const AVAILABLE_COURSES = ['BCOM', 'BAF', 'BBI', 'BFM', 'BMS', 'BSCIT', 'BMM', 'BSCCS', 'MCOM', 'MSCFM'];
+import {
+  getHodList,
+  toggleHodApproval,
+  getAllAnnouncementsAudit,
+  assignHodCourses,
+  deleteHodAccount,
+  deleteAnnouncementBySuperAdmin,
+  editAnnouncementBySuperAdmin,
+  getCourses,
+  addCourse,
+  deleteCourse,
+  broadcastEmergency,
+  getCaptcha,
+  verifySuperAdminLogin,
+} from '../services/api';
+import CaptchaInput from '../components/CaptchaInput';
 
 export const SuperAdminDashboard = () => {
   const [adminSecret, setAdminSecret] = useState(
@@ -32,10 +46,24 @@ export const SuperAdminDashboard = () => {
   const [inputSecret, setInputSecret] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('hods'); // 'hods' | 'announcements'
+  const [activeTab, setActiveTab] = useState('hods'); // 'hods' | 'announcements' | 'courses'
 
   const [hods, setHods] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [newCourseCode, setNewCourseCode] = useState('');
+  const [newCourseName, setNewCourseName] = useState('');
+  
+  // Emergency Broadcast State
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  
+  // Edit Announcement State
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [savingCoursesId, setSavingCoursesId] = useState(null);
@@ -48,13 +76,41 @@ export const SuperAdminDashboard = () => {
   const [error, setError] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
 
+  // Captcha State
+  const [captchaSvg, setCaptchaSvg] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captchaError, setCaptchaError] = useState('');
+
+  const loadNewCaptcha = async () => {
+    setCaptchaLoading(true);
+    setCaptchaError('');
+    setCaptchaInput('');
+    try {
+      const res = await getCaptcha();
+      if (res.success) {
+        setCaptchaSvg(res.svg);
+        setCaptchaToken(res.token);
+      } else {
+        setCaptchaError(res.error || 'Failed to generate captcha.');
+      }
+    } catch (err) {
+      console.error('[Captcha Load Error]:', err);
+      setCaptchaError('Failed to load captcha. Please retry.');
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
+
   const fetchDashboardData = async (secret) => {
     setIsLoading(true);
     setError(null);
     try {
-      const [hodRes, annRes] = await Promise.all([
+      const [hodRes, annRes, courseRes] = await Promise.all([
         getHodList(secret),
         getAllAnnouncementsAudit(secret),
+        getCourses()
       ]);
 
       if (hodRes.success) {
@@ -69,6 +125,9 @@ export const SuperAdminDashboard = () => {
       if (annRes.success) {
         setAnnouncements(annRes.data);
       }
+      if (courseRes.success) {
+        setCourses(courseRes.data);
+      }
 
       setIsAuthenticated(true);
       sessionStorage.setItem('gsc_admin_secret', secret);
@@ -77,6 +136,7 @@ export const SuperAdminDashboard = () => {
       const msg = err.response?.data?.error || err.message;
       setError(typeof msg === 'string' ? msg : 'Authentication failed: Invalid Admin Secret key.');
       setIsAuthenticated(false);
+      loadNewCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -85,27 +145,164 @@ export const SuperAdminDashboard = () => {
   useEffect(() => {
     if (adminSecret) {
       fetchDashboardData(adminSecret);
+    } else {
+      loadNewCaptcha();
     }
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (!inputSecret.trim()) return;
-    setAdminSecret(inputSecret.trim());
-    fetchDashboardData(inputSecret.trim());
+    setError(null);
+    setCaptchaError('');
+
+    if (!inputSecret.trim()) {
+      setError('Admin Secret Key is required.');
+      return;
+    }
+    if (!captchaInput.trim()) {
+      setCaptchaError('Please enter the captcha characters.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 1. Cryptographically verify secret + captcha with backend
+      const verifyRes = await verifySuperAdminLogin(
+        inputSecret.trim(),
+        captchaInput.trim(),
+        captchaToken
+      );
+
+      if (verifyRes.success) {
+        setAdminSecret(inputSecret.trim());
+        await fetchDashboardData(inputSecret.trim());
+      }
+    } catch (err) {
+      console.error('[Super Admin Login Error]:', err);
+      const msg = err.response?.data?.error || err.message;
+      setError(typeof msg === 'string' ? msg : 'Authentication failed: Invalid credentials or captcha.');
+      // Refresh captcha automatically after failed attempt
+      loadNewCaptcha();
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('gsc_admin_secret');
     setAdminSecret('');
+    setInputSecret('');
+    setCaptchaInput('');
     setIsAuthenticated(false);
     setHods([]);
     setAnnouncements([]);
+    loadNewCaptcha();
   };
+
+  // Session Timeout Logic (15 minutes of inactivity)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId;
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout();
+        setError('Session expired due to inactivity. Please log in again.');
+      }, 15 * 60 * 1000); // 15 minutes
+    };
+
+    resetTimer(); // Initial start
+    const events = ['mousemove', 'mousedown', 'keypress', 'touchmove', 'scroll'];
+    events.forEach((evt) => window.addEventListener(evt, resetTimer));
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [isAuthenticated]);
 
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 4000);
+  };
+
+  const handleAddCourse = async (e) => {
+    e.preventDefault();
+    try {
+      setIsLoading(true);
+      const res = await addCourse({ code: newCourseCode.trim().toUpperCase(), name: newCourseName.trim() }, adminSecret);
+      if (res.success) {
+        showToast('Course added successfully!');
+        setNewCourseCode('');
+        setNewCourseName('');
+        fetchDashboardData(adminSecret);
+      } else {
+        setError(res.error || 'Failed to add course.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteCourse = async (code) => {
+    if (!window.confirm(`Are you sure you want to delete ${code}?`)) return;
+    try {
+      setIsLoading(true);
+      const res = await deleteCourse(code, adminSecret);
+      if (res.success) {
+        showToast('Course deleted successfully!');
+        fetchDashboardData(adminSecret);
+      } else {
+        setError(res.error || 'Failed to delete course.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    try {
+      setIsLoading(true);
+      const res = await broadcastEmergency({ title: broadcastTitle, message: broadcastMessage }, adminSecret);
+      if (res.success) {
+        showToast('Emergency Broadcast Sent!');
+        setIsBroadcastModalOpen(false);
+        setBroadcastTitle('');
+        setBroadcastMessage('');
+        fetchDashboardData(adminSecret);
+      } else {
+        setError(res.error || 'Failed to send broadcast.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setIsLoading(true);
+      const res = await editAnnouncementBySuperAdmin(editingAnnouncement._id, { title: editTitle, content: editContent }, adminSecret);
+      if (res.success) {
+        showToast('Announcement updated successfully!');
+        setEditingAnnouncement(null);
+        fetchDashboardData(adminSecret);
+      } else {
+        setError(res.error || 'Failed to edit announcement.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleApprovalToggle = async (userId, targetStatus) => {
@@ -280,6 +477,19 @@ export const SuperAdminDashboard = () => {
               </div>
             </div>
 
+            <CaptchaInput
+              captchaSvg={captchaSvg}
+              captchaValue={captchaInput}
+              onCaptchaChange={(val) => {
+                setCaptchaInput(val);
+                if (captchaError) setCaptchaError('');
+              }}
+              onRefresh={loadNewCaptcha}
+              isLoading={captchaLoading}
+              error={captchaError}
+              disabled={isLoading}
+            />
+
             <button
               type="submit"
               disabled={isLoading}
@@ -327,6 +537,14 @@ export const SuperAdminDashboard = () => {
 
         <div className="flex items-center space-x-3 relative z-10">
           <button
+            onClick={() => setIsBroadcastModalOpen(true)}
+            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 shadow-sm"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>Emergency Alert</span>
+          </button>
+
+          <button
             onClick={() => fetchDashboardData(adminSecret)}
             className="px-4 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1.5 shadow-sm"
             title="Refresh list"
@@ -368,6 +586,17 @@ export const SuperAdminDashboard = () => {
         >
           <FileText className="w-4 h-4" />
           <span>Notice Audit Feed ({announcements.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('courses')}
+          className={`w-full sm:w-auto px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-2 ${activeTab === 'courses'
+            ? 'bg-college-navy dark:bg-slate-700 text-college-gold dark:text-amber-300 shadow-md'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Course Management ({courses.length})</span>
         </button>
       </div>
 
@@ -504,7 +733,8 @@ export const SuperAdminDashboard = () => {
                                 >
                                   ✨ All Courses
                                 </button>
-                                {AVAILABLE_COURSES.map((code) => {
+                                {courses.map((course) => {
+                                  const code = course.code;
                                   const isSelected = !isFullAccess && currentAssigned.includes(code);
                                   return (
                                     <button
@@ -710,15 +940,29 @@ export const SuperAdminDashboard = () => {
                         </td>
 
                         <td className="py-4 px-6 text-right">
-                          <button
-                            onClick={() => setDeleteConfirmNotice(ann)}
-                            disabled={isDeletingNotice}
-                            title="Delete misleading announcement from portal"
-                            className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 inline-flex items-center space-x-1 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
-                          </button>
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingAnnouncement(ann);
+                                setEditTitle(ann.title);
+                                setEditContent(ann.content);
+                              }}
+                              title="Edit violating content"
+                              className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-[11px] transition-all border border-blue-200 dark:border-blue-800 inline-flex items-center space-x-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmNotice(ann)}
+                              disabled={isDeletingNotice}
+                              title="Delete misleading announcement from portal"
+                              className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 inline-flex items-center space-x-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -727,6 +971,59 @@ export const SuperAdminDashboard = () => {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 3: Course Management */}
+      {activeTab === 'courses' && (
+        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors p-6">
+          <div className="mb-6">
+            <h2 className="font-heading font-bold text-slate-800 dark:text-white text-lg">Manage Departments/Courses</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Add or remove courses available for tagging in announcements.</p>
+          </div>
+
+          <form onSubmit={handleAddCourse} className="flex gap-4 mb-8">
+            <input
+              type="text"
+              placeholder="Course Code (e.g. BCOM)"
+              value={newCourseCode}
+              onChange={(e) => setNewCourseCode(e.target.value)}
+              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm"
+              required
+            />
+            <input
+              type="text"
+              placeholder="Course Name (e.g. Bachelor of Commerce)"
+              value={newCourseName}
+              onChange={(e) => setNewCourseName(e.target.value)}
+              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm flex-1"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="px-6 py-2 bg-college-navy hover:bg-college-navyLight text-college-gold font-bold rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
+            >
+              Add Course
+            </button>
+          </form>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {courses.map((c) => (
+              <div key={c.code} className="p-4 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-800 dark:text-white">{c.code}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{c.name}</div>
+                </div>
+                <button
+                  onClick={() => handleDeleteCourse(c.code)}
+                  className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -954,6 +1251,149 @@ export const SuperAdminDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Edit Announcement Modal */}
+      {editingAnnouncement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl border border-blue-200 dark:border-blue-900/60 overflow-hidden">
+            <div className="bg-blue-50 dark:bg-blue-950/40 px-6 py-4 border-b border-blue-100 dark:border-blue-900/40 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-blue-600 text-white shadow-sm">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-blue-950 dark:text-blue-200">
+                    Edit Violating Content
+                  </h3>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">
+                    Modify the title or body to remove inappropriate text
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingAnnouncement(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Content (HTML allowed)</label>
+                <textarea
+                  required
+                  rows={6}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-mono"
+                />
+              </div>
+              
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setEditingAnnouncement(null)}
+                  className="px-4 py-2 text-slate-600 bg-slate-100 rounded-xl font-bold text-xs hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-xl font-bold text-xs flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Emergency Broadcast Modal */}
+      {isBroadcastModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg border border-red-200 dark:border-red-900/60 overflow-hidden">
+            <div className="bg-red-50 dark:bg-red-950/40 px-6 py-4 border-b border-red-100 dark:border-red-900/40 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-red-600 text-white shadow-sm">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-red-950 dark:text-red-200">
+                    Emergency Broadcast Alert
+                  </h3>
+                  <p className="text-[11px] text-red-700 dark:text-red-400 font-medium">
+                    Send an immediate push notification to all students
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleBroadcast} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-red-500 focus:border-red-500"
+                  placeholder="e.g. College Closed Due to Heavy Rain"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Message</label>
+                <textarea
+                  required
+                  rows={4}
+                  value={broadcastMessage}
+                  onChange={(e) => setBroadcastMessage(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-red-500 focus:border-red-500"
+                  placeholder="Provide detailed instructions for students..."
+                />
+              </div>
+              
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsBroadcastModalOpen(false)}
+                  className="px-4 py-2 text-slate-600 bg-slate-100 rounded-xl font-bold text-xs hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-xl font-bold text-xs flex items-center space-x-1.5 disabled:opacity-50 shadow-sm shadow-red-500/20"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                  <span>Fire Broadcast</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
