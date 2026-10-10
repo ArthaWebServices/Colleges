@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -66,6 +67,8 @@ export const SuperAdminDashboard = () => {
   const [editContent, setEditContent] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isAddingCourse, setIsAddingCourse] = useState(false);
+  const [isDeletingCourseCode, setIsDeletingCourseCode] = useState(null);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [savingCoursesId, setSavingCoursesId] = useState(null);
   const [editingHodCourses, setEditingHodCourses] = useState({}); // { [userId]: string[] }
@@ -76,6 +79,9 @@ export const SuperAdminDashboard = () => {
   const [isDeletingNotice, setIsDeletingNotice] = useState(false);
   const [error, setError] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
+
+  // Refs for Virtualization
+  const auditTableRef = React.useRef(null);
 
   // Captcha State
   const [captchaSvg, setCaptchaSvg] = useState('');
@@ -230,40 +236,54 @@ export const SuperAdminDashboard = () => {
 
   const handleAddCourse = async (e) => {
     e.preventDefault();
+    if (!newCourseCode.trim() || !newCourseName.trim() || !newCourseStream.trim()) {
+      setError('Course Code, Name, and Stream are all required.');
+      return;
+    }
     try {
-      setIsLoading(true);
-      const res = await addCourse({ code: newCourseCode.trim().toUpperCase(), name: newCourseName.trim(), stream: newCourseStream.trim() }, adminSecret);
+      setIsAddingCourse(true);
+      setError(null);
+      const res = await addCourse(
+        { code: newCourseCode.trim().toUpperCase(), name: newCourseName.trim(), stream: newCourseStream.trim() },
+        adminSecret
+      );
       if (res.success) {
         showToast('Course added successfully!');
         setNewCourseCode('');
         setNewCourseName('');
         setNewCourseStream('');
-        fetchDashboardData(adminSecret);
+        // Refresh courses list only
+        const courseRes = await getCourses();
+        if (courseRes.success) setCourses(courseRes.data);
       } else {
         setError(res.error || 'Failed to add course.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      const msg = err.response?.data?.error || err.response?.data?.errors?.[0] || err.message;
+      setError(typeof msg === 'string' ? msg : 'Failed to add course.');
     } finally {
-      setIsLoading(false);
+      setIsAddingCourse(false);
     }
   };
 
   const handleDeleteCourse = async (code) => {
-    if (!window.confirm(`Are you sure you want to delete ${code}?`)) return;
+    if (!window.confirm(`Are you sure you want to delete "${code}"? This action cannot be undone.`)) return;
     try {
-      setIsLoading(true);
+      setIsDeletingCourseCode(code);
+      setError(null);
       const res = await deleteCourse(code, adminSecret);
       if (res.success) {
-        showToast('Course deleted successfully!');
-        fetchDashboardData(adminSecret);
+        showToast(`Course "${code}" deleted successfully!`);
+        // Optimistically remove from state
+        setCourses((prev) => prev.filter((c) => c.code !== code));
       } else {
         setError(res.error || 'Failed to delete course.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      const msg = err.response?.data?.error || err.response?.data?.errors?.[0] || err.message;
+      setError(typeof msg === 'string' ? msg : 'Failed to delete course.');
     } finally {
-      setIsLoading(false);
+      setIsDeletingCourseCode(null);
     }
   };
 
@@ -271,7 +291,8 @@ export const SuperAdminDashboard = () => {
     e.preventDefault();
     try {
       setIsLoading(true);
-      const res = await broadcastEmergency({ title: broadcastTitle, message: broadcastMessage }, adminSecret);
+      // Backend expects { title, content } not { title, message }
+      const res = await broadcastEmergency({ title: broadcastTitle, content: broadcastMessage }, adminSecret);
       if (res.success) {
         showToast('Emergency Broadcast Sent!');
         setIsBroadcastModalOpen(false);
@@ -282,7 +303,8 @@ export const SuperAdminDashboard = () => {
         setError(res.error || 'Failed to send broadcast.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      const msg = err.response?.data?.error || err.response?.data?.errors?.[0] || err.message;
+      setError(typeof msg === 'string' ? msg : 'Failed to send broadcast.');
     } finally {
       setIsLoading(false);
     }
@@ -839,140 +861,166 @@ export const SuperAdminDashboard = () => {
             <span className="text-xs text-slate-500 dark:text-slate-400">Audit Feed</span>
           </div>
 
-          {isLoading ? (
-            <div className="py-16 text-center">
-              <div className="w-10 h-10 border-4 border-college-navy dark:border-college-gold border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading master announcement logs...</p>
-            </div>
-          ) : announcements.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-xs font-medium">
-              No announcements posted in the database yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-600 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                    <th className="py-3.5 px-6">Notice Title</th>
-                    <th className="py-3.5 px-6">Target Course(s)</th>
-                    <th className="py-3.5 px-6">Posted By (Author HOD)</th>
-                    <th className="py-3.5 px-6">Posted On</th>
-                    <th className="py-3.5 px-6">Attachment</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-xs">
-                  {announcements.map((ann) => {
-                    const postDate = new Date(ann.createdAt).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
+          {(() => {
+            const rowVirtualizer = useVirtualizer({
+              count: announcements.length,
+              getScrollElement: () => auditTableRef.current,
+              estimateSize: () => 90, // Approximate row height in px
+              overscan: 10,
+            });
 
-                    const matchedHod = hods.find((h) => h.id === ann.postedBy);
-                    const authorName = ann.postedByName !== 'HOD' ? ann.postedByName : matchedHod?.fullName || 'HOD';
-                    const authorEmail = ann.postedByEmail || matchedHod?.email || ann.postedBy;
+            if (isLoading) {
+              return (
+                <div className="py-16 text-center">
+                  <div className="w-10 h-10 border-4 border-college-navy dark:border-college-gold border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading master announcement logs...</p>
+                </div>
+              );
+            }
 
-                    return (
-                      <tr key={ann._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
-                        <td className="py-4 px-6 max-w-xs">
-                          <div className="font-bold text-slate-900 dark:text-white truncate" title={ann.title}>
-                            {ann.title}
-                          </div>
-                          {ann.isPinned && (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                              Pinned
-                            </span>
-                          )}
-                        </td>
+            if (announcements.length === 0) {
+              return (
+                <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-xs font-medium">
+                  No announcements posted in the database yet.
+                </div>
+              );
+            }
 
-                        <td className="py-4 px-6">
-                          <div className="flex flex-wrap gap-1">
-                            {ann.courseCodes?.map((code) => (
-                              <span
-                                key={code}
-                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-college-navy/10 dark:bg-slate-700 text-college-navy dark:text-college-gold border border-college-navy/20 dark:border-slate-600 flex items-center gap-0.5"
-                              >
-                                <Tag className="w-2.5 h-2.5" />
-                                {code}
+            return (
+              <div ref={auditTableRef} className="overflow-auto max-h-[600px] relative w-full">
+                <table className="w-full text-left border-collapse table-fixed min-w-[900px]">
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shadow-sm">
+                    <tr className="text-slate-600 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider">
+                      <th className="py-3.5 px-4 w-1/4">Notice Title</th>
+                      <th className="py-3.5 px-4 w-[15%]">Target Course(s)</th>
+                      <th className="py-3.5 px-4 w-1/5">Posted By (Author HOD)</th>
+                      <th className="py-3.5 px-4 w-[12%]">Posted On</th>
+                      <th className="py-3.5 px-4 w-[8%]">Attachment</th>
+                      <th className="py-3.5 px-4 w-[10%]">Status</th>
+                      <th className="py-3.5 px-4 w-[10%] text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody 
+                    className="divide-y divide-slate-100 dark:divide-slate-700 text-xs block relative"
+                    style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+                  >
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const ann = announcements[virtualRow.index];
+                      const postDate = new Date(ann.createdAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      const matchedHod = hods.find((h) => h.id === ann.postedBy);
+                      const authorName = ann.postedByName !== 'HOD' ? ann.postedByName : matchedHod?.fullName || 'HOD';
+                      const authorEmail = ann.postedByEmail || matchedHod?.email || ann.postedBy;
+
+                      return (
+                        <tr 
+                          key={ann._id} 
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors absolute w-full flex items-center"
+                          style={{
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <td className="py-4 px-4 w-1/4">
+                            <div className="font-bold text-slate-900 dark:text-white truncate" title={ann.title}>
+                              {ann.title}
+                            </div>
+                            {ann.isPinned && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                Pinned
                               </span>
-                            ))}
-                          </div>
-                        </td>
+                            )}
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white">{authorName}</div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono break-all">{authorEmail}</div>
-                          </div>
-                        </td>
+                          <td className="py-4 px-4 w-[15%]">
+                            <div className="flex flex-wrap gap-1">
+                              {ann.courseCodes?.map((code) => (
+                                <span
+                                  key={code}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-college-navy/10 dark:bg-slate-700 text-college-navy dark:text-college-gold border border-college-navy/20 dark:border-slate-600 flex items-center gap-0.5"
+                                >
+                                  <Tag className="w-2.5 h-2.5" />
+                                  {code}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
 
-                        <td className="py-4 px-6 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
-                          {postDate}
-                        </td>
+                          <td className="py-4 px-4 w-1/5">
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">{authorEmail}</div>
+                            </div>
+                          </td>
 
-                        <td className="py-4 px-6">
-                          {ann.attachmentUrl ? (
-                            <a
-                              href={ann.attachmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px]"
+                          <td className="py-4 px-4 w-[12%] text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
+                            {postDate}
+                          </td>
+
+                          <td className="py-4 px-4 w-[8%]">
+                            {ann.attachmentUrl ? (
+                              <a
+                                href={ann.attachmentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px]"
+                              >
+                                <span>File</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-500 italic">None</span>
+                            )}
+                          </td>
+
+                          <td className="py-4 px-4 w-[10%]">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ann.status === 'PUBLISHED'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                }`}
                             >
-                              <span>View File</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <span className="text-slate-400 dark:text-slate-500 italic">None</span>
-                          )}
-                        </td>
+                              {ann.status}
+                            </span>
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ann.status === 'PUBLISHED'
-                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                              }`}
-                          >
-                            {ann.status}
-                          </span>
-                        </td>
-
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => {
-                                setEditingAnnouncement(ann);
-                                setEditTitle(ann.title);
-                                setEditContent(ann.content);
-                              }}
-                              title="Edit violating content"
-                              className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-[11px] transition-all border border-blue-200 dark:border-blue-800 inline-flex items-center space-x-1 cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirmNotice(ann)}
-                              disabled={isDeletingNotice}
-                              title="Delete misleading announcement from portal"
-                              className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 inline-flex items-center space-x-1 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                          <td className="py-4 px-4 w-[10%] text-right flex justify-end">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                onClick={() => {
+                                  setEditingAnnouncement(ann);
+                                  setEditTitle(ann.title);
+                                  setEditContent(ann.content);
+                                }}
+                                title="Edit violating content"
+                                className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-[11px] transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center cursor-pointer h-7"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmNotice(ann)}
+                                disabled={isDeletingNotice}
+                                title="Delete misleading announcement from portal"
+                                className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 flex items-center justify-center cursor-pointer h-7"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -984,56 +1032,100 @@ export const SuperAdminDashboard = () => {
             <p className="text-xs text-slate-500 dark:text-slate-400">Add or remove courses available for tagging in announcements.</p>
           </div>
 
-          <form onSubmit={handleAddCourse} className="flex gap-4 mb-8">
-            <input
-              type="text"
-              placeholder="Course Code (e.g. BCOM)"
-              value={newCourseCode}
-              onChange={(e) => setNewCourseCode(e.target.value)}
-              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Course Name (e.g. Bachelor of Commerce)"
-              value={newCourseName}
-              onChange={(e) => setNewCourseName(e.target.value)}
-              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm flex-1"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Stream (e.g. Commerce)"
-              value={newCourseStream}
-              onChange={(e) => setNewCourseStream(e.target.value)}
-              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm w-40"
-              required
-            />
+          <form onSubmit={handleAddCourse} className="flex flex-wrap gap-3 mb-8 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Course Code *</label>
+              <input
+                type="text"
+                placeholder="e.g. BCOM"
+                value={newCourseCode}
+                onChange={(e) => setNewCourseCode(e.target.value)}
+                className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm w-36 focus:outline-none focus:ring-2 focus:ring-college-gold"
+                required
+                disabled={isAddingCourse}
+              />
+            </div>
+            <div className="flex flex-col gap-1 flex-1 min-w-48">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Course Name *</label>
+              <input
+                type="text"
+                placeholder="e.g. Bachelor of Commerce"
+                value={newCourseName}
+                onChange={(e) => setNewCourseName(e.target.value)}
+                className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm w-full focus:outline-none focus:ring-2 focus:ring-college-gold"
+                required
+                disabled={isAddingCourse}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Stream *</label>
+              <input
+                type="text"
+                placeholder="e.g. Commerce"
+                value={newCourseStream}
+                onChange={(e) => setNewCourseStream(e.target.value)}
+                className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm w-36 focus:outline-none focus:ring-2 focus:ring-college-gold"
+                required
+                disabled={isAddingCourse}
+              />
+            </div>
             <button
               type="submit"
-              disabled={isLoading}
-              className="px-6 py-2 bg-college-navy hover:bg-college-navyLight text-college-gold font-bold rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
+              disabled={isAddingCourse}
+              className="px-6 py-2.5 bg-college-navy hover:bg-college-navyLight text-college-gold font-bold rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2 shrink-0"
             >
-              Add Course
+              {isAddingCourse ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-college-gold border-t-transparent rounded-full animate-spin" />
+                  <span>Adding...</span>
+                </>
+              ) : (
+                'Add Course'
+              )}
             </button>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {courses.map((c) => (
-              <div key={c.code} className="p-4 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-slate-800 dark:text-white">{c.code}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{c.name}</div>
-                </div>
-                <button
-                  onClick={() => handleDeleteCourse(c.code)}
-                  className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
+          {courses.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-sm font-medium border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">
+              No courses added yet. Use the form above to add your first course.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {courses.map((c) => {
+                const isDeleting = isDeletingCourseCode === c.code;
+                return (
+                  <div
+                    key={c.code}
+                    className={`p-4 border rounded-2xl flex items-center justify-between transition-all ${
+                      isDeleting
+                        ? 'opacity-50 border-rose-300 dark:border-rose-700 bg-rose-50/50 dark:bg-rose-950/20'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold text-slate-800 dark:text-white text-sm">{c.code}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{c.name}</div>
+                      {c.stream && (
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{c.stream}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteCourse(c.code)}
+                      disabled={isDeleting || isDeletingCourseCode !== null}
+                      title={`Delete ${c.code}`}
+                      className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isDeleting ? (
+                        <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

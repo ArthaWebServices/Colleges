@@ -11,8 +11,13 @@ try {
 const connectDB = async (uri) => {
   try {
     const mongoUri = uri || process.env.MONGODB_URI || 'mongodb://localhost:27017/gsc_announcements';
-    const conn = await mongoose.connect(mongoUri);
-    console.log(`[MongoDB Connected]: ${conn.connection.host}`);
+    
+    // Enable Zstd compression for high-speed, low-bandwidth DB communication
+    const conn = await mongoose.connect(mongoUri, {
+      compressors: ['zstd', 'zlib'], // zstd is fastest; zlib is fallback
+    });
+    
+    console.log(`[MongoDB Connected]: ${conn.connection.host} (Compression Active)`);
     const { ensureCoursesExist } = require('../utils/ensureCourses');
     await ensureCoursesExist();
     return conn;

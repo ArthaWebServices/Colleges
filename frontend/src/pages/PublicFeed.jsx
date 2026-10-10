@@ -38,10 +38,16 @@ export const PublicFeed = () => {
   const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState('ALL');
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [viewMode, setViewMode] = useState('FEED'); // 'FEED' | 'CALENDAR'
+  
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const observer = React.useRef();
 
   // Push notifications states
   const [swRegistration, setSwRegistration] = useState(null);
@@ -202,14 +208,16 @@ export const PublicFeed = () => {
     setBookmarkedIds(getBookmarks());
   }, []);
 
-  // Fetch announcements whenever filters change
+  // Fetch announcements for the first page
   const fetchAnnouncementsList = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await getAnnouncements(selectedCourse, searchQuery, startDate, endDate, selectedType, selectedYear);
+      const res = await getAnnouncements(selectedCourse, searchQuery, startDate, endDate, selectedType, selectedYear, 1, 20);
       if (res.success) {
         setAnnouncements(res.data);
+        setPage(res.page);
+        setTotalPages(res.totalPages);
       }
     } catch (err) {
       console.error('[Fetch Announcements Error]:', err);
@@ -218,6 +226,37 @@ export const PublicFeed = () => {
       setIsLoading(false);
     }
   };
+
+  // Fetch more announcements when scrolling
+  const fetchMoreAnnouncements = async () => {
+    if (isFetchingMore || page >= totalPages) return;
+    setIsFetchingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await getAnnouncements(selectedCourse, searchQuery, startDate, endDate, selectedType, selectedYear, nextPage, 20);
+      if (res.success) {
+        setAnnouncements((prev) => [...prev, ...res.data]);
+        setPage(res.page);
+        setTotalPages(res.totalPages);
+      }
+    } catch (err) {
+      console.error('[Fetch More Error]:', err);
+    } finally {
+      setIsFetchingMore(false);
+    }
+  };
+
+  // Infinite Scroll Observer
+  const lastElementRef = React.useCallback((node) => {
+    if (isLoading || isFetchingMore) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && page < totalPages) {
+        fetchMoreAnnouncements();
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [isLoading, isFetchingMore, page, totalPages]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -447,7 +486,8 @@ export const PublicFeed = () => {
           </h2>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">
-              Showing {displayedAnnouncements.length} {displayedAnnouncements.length === 1 ? 'announcement' : 'announcements'}
+              Showing {displayedAnnouncements.length} {displayedAnnouncements.length === 1 ? 'announcement' : 'announcements'} 
+              {totalPages > 1 ? ` (Page ${page} of ${totalPages})` : ''}
             </span>
 
             {/* View Mode Toggle Switch */}
@@ -529,16 +569,40 @@ export const PublicFeed = () => {
           /* Announcement Grid */
           !isLoading && !error && displayedAnnouncements.length > 0 && (
             <div className="columns-1 md:columns-2 gap-6 [column-fill:_balance] w-full">
-              {displayedAnnouncements.map((item) => (
-                <div key={item._id} id={`announcement-${item._id}`} className="break-inside-avoid mb-6">
-                  <AnnouncementCard
-                    announcement={item}
-                    onBookmarkToggle={handleBookmarkToggleInCard}
-                  />
-                </div>
-              ))}
+              {displayedAnnouncements.map((item, index) => {
+                // Attach the observer to the very last card in the current array
+                const isLast = index === displayedAnnouncements.length - 1;
+                return (
+                  <div 
+                    key={item._id} 
+                    id={`announcement-${item._id}`} 
+                    className="break-inside-avoid mb-6"
+                    ref={isLast ? lastElementRef : null}
+                  >
+                    <AnnouncementCard
+                      announcement={item}
+                      onBookmarkToggle={handleBookmarkToggleInCard}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )
+        )}
+        
+        {/* Loading Spinner for Infinite Scroll */}
+        {isFetchingMore && (
+          <div className="flex justify-center items-center py-6 w-full">
+            <Loader2 className="w-6 h-6 animate-spin text-college-navy dark:text-college-gold" />
+            <span className="ml-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Loading more notices...</span>
+          </div>
+        )}
+        
+        {/* End of feed indicator */}
+        {!isLoading && !isFetchingMore && displayedAnnouncements.length > 0 && page >= totalPages && (
+          <div className="text-center py-6">
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">You've reached the end of the feed.</span>
+          </div>
         )}
       </div>
       {/* Push Notifications Subscription Panel (Footer Part) */}

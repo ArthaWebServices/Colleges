@@ -4,7 +4,14 @@ require('dotenv').config();
 const helmet = require('helmet');
 const { clerkMiddleware } = require('@clerk/express');
 const connectDB = require('./config/db');
+const { initRedis } = require('./config/redis');
 const { apiRateLimiter } = require('./middleware/rateLimiter');
+const compression = require('compression');
+const zlib = require('zlib');
+
+// Initialize database & cache
+connectDB();
+initRedis();
 
 const courseRoutes = require('./routes/courseRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
@@ -67,6 +74,37 @@ app.use(helmet({
   contentSecurityPolicy: false, // Disabled for API server so static assets/cross-origin calls function smoothly
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
+
+// ─── Compression Middleware (Brotli preferred, gzip fallback) ────────────────
+// Skips already-compressed binary formats to avoid wasting CPU.
+const SKIP_COMPRESSION_MIME = /^(image|video|audio)\//i;
+const SKIP_COMPRESSION_EXT  = /\.(pdf|zip|gz|br|zst|mp4|webm|png|jpg|jpeg|gif|webp|avif|woff2?)$/i;
+
+app.use(
+  compression({
+    // Only compress responses >= 1 KB
+    threshold: 1024,
+    // Skip binary/already-compressed content types
+    filter: (req, res) => {
+      const contentType = res.getHeader('Content-Type') || '';
+      const url = req.url || '';
+      if (SKIP_COMPRESSION_MIME.test(contentType)) return false;
+      if (SKIP_COMPRESSION_EXT.test(url)) return false;
+      return compression.filter(req, res);
+    },
+    // Use Brotli when client advertises it, else gzip
+    brotli: {
+      enabled: true,
+      zlib: {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]: 4, // 0–11 (4 = fast + good ratio)
+        },
+      },
+    },
+    level: 6, // gzip level (1=fast, 9=best; 6 is the Node default sweet-spot)
+  })
+);
+// ─────────────────────────────────────────────────────────────────────────────
 
 // CORS Configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS

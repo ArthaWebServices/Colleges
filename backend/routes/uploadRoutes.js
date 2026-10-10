@@ -26,7 +26,7 @@ const fileFilter = (req, file, cb) => {
 // Configure multer with memory storage, strict file filter, and 16 MB limit
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB max
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
   fileFilter,
 });
 
@@ -44,7 +44,7 @@ router.post('/', requireApprovedHod, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, error: 'File size exceeds maximum limit of 16MB.' });
+        return res.status(400).json({ success: false, error: 'File size exceeds maximum limit of 50MB.' });
       }
       return res.status(400).json({ success: false, error: 'Upload Error: ' + err.message });
     } else if (err) {
@@ -70,11 +70,32 @@ router.post('/', requireApprovedHod, (req, res, next) => {
       });
     }
 
-    // Create an UploadThing-compatible file from the multer buffer
+    let finalBuffer = req.file.buffer;
+    let finalMimetype = req.file.mimetype;
+    let finalFilename = req.file.originalname;
+
+    // Apply image compression if the uploaded file is an image
+    if (finalMimetype.startsWith('image/') && !finalMimetype.includes('svg')) {
+      try {
+        const sharp = require('sharp');
+        // Compress and convert images to WebP for massive file size reduction
+        finalBuffer = await sharp(req.file.buffer)
+          .webp({ quality: 80, effort: 4 })
+          .toBuffer();
+        
+        finalMimetype = 'image/webp';
+        finalFilename = finalFilename.replace(/\.[^/.]+$/, "") + ".webp";
+        console.log(`[Upload] Image compressed to WebP: ${finalFilename}`);
+      } catch (imgErr) {
+        console.warn('[Upload] Image compression failed, falling back to original:', imgErr.message);
+      }
+    }
+
+    // Create an UploadThing-compatible file from the optimized buffer
     const utFile = new UTFile(
-      [req.file.buffer],
-      req.file.originalname,
-      { type: req.file.mimetype }
+      [finalBuffer],
+      finalFilename,
+      { type: finalMimetype }
     );
 
     // Upload to UploadThing

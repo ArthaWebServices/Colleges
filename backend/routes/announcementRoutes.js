@@ -7,6 +7,7 @@ const Announcement = require('../models/Announcement');
 const Course = require('../models/Course');
 const { clerkClient } = require('@clerk/express');
 const { requireApprovedHod } = require('../middleware/auth');
+const { cacheAnnouncements, clearAnnouncementCache } = require('../middleware/cache');
 
 // Options for XSS sanitization (upgraded for rich text/React-Quill)
 const sanitizeOptions = {
@@ -87,12 +88,12 @@ const validateHodCoursePermissions = async (userId, targetCourseCodes) => {
 
 /**
  * @route   GET /api/announcements
- * @desc    Fetch public announcements (supports ?course= and ?search=)
+ * @desc    Fetch public announcements (supports pagination, ?course= and ?search=)
  * @access  Public
  */
-router.get('/', async (req, res) => {
+router.get('/', cacheAnnouncements, async (req, res) => {
   try {
-    const { course, search, startDate, endDate, type, year } = req.query;
+    const { course, search, startDate, endDate, type, year, page = 1, limit = 20 } = req.query;
     const now = new Date();
 
     // Query filter: exclude expired announcements and only show PUBLISHED
@@ -140,12 +141,26 @@ router.get('/', async (req, res) => {
       ];
     }
 
-    // Sort: emergency first (-1), then pinned (-1), then newest created (-1)
-    const announcements = await Announcement.find(queryFilter).sort({ isEmergency: -1, isPinned: -1, createdAt: -1 });
+    // Pagination configuration
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10))); // Cap at 100 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    // Run queries in parallel for maximum speed
+    const [announcements, totalCount] = await Promise.all([
+      Announcement.find(queryFilter)
+        .sort({ isEmergency: -1, isPinned: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Announcement.countDocuments(queryFilter)
+    ]);
 
     res.json({
       success: true,
       count: announcements.length,
+      total: totalCount,
+      page: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum),
       data: announcements,
     });
   } catch (error) {
@@ -376,6 +391,7 @@ router.post(
       });
 
       await newAnnouncement.save();
+      await clearAnnouncementCache(); // Invalidate cache so public sees it immediately
 
       // Trigger push notifications for published announcements
       if (newAnnouncement.status === 'PUBLISHED') {
@@ -538,6 +554,7 @@ router.put(
 
       const previousStatus = announcement.status;
       await announcement.save();
+      await clearAnnouncementCache(); // Invalidate cache
 
       // Trigger push notifications if it became PUBLISHED, or was updated while PUBLISHED
       if (announcement.status === 'PUBLISHED' && (previousStatus === 'DRAFT' || req.body.status === 'PUBLISHED' || status === 'PUBLISHED')) {
@@ -600,6 +617,7 @@ router.delete(
       }
 
       await announcement.deleteOne();
+      await clearAnnouncementCache(); // Invalidate cache
 
       res.json({
         success: true,

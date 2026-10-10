@@ -143,7 +143,7 @@ const announcementSchema = new mongoose.Schema(
 );
 
 // Index for performance on searches and expiration filtering
-announcementSchema.index({ isEmergency: -1, isPinned: -1, createdAt: -1 });
+announcementSchema.index({ status: 1, isEmergency: -1, isPinned: -1, createdAt: -1 });
 announcementSchema.index({ expiresAt: 1 });
 announcementSchema.index({ eventDate: 1 });
 announcementSchema.index({ courseCodes: 1 });

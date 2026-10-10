@@ -27,10 +27,10 @@ export const getCourses = async () => {
 };
 
 /**
- * Fetch public announcements with optional course and search query
+ * Fetch public announcements with optional filters, search, and pagination
  */
-export const getAnnouncements = async (course = '', search = '', startDate = '', endDate = '', type = '', year = '') => {
-  const params = {};
+export const getAnnouncements = async (course = '', search = '', startDate = '', endDate = '', type = '', year = '', page = 1, limit = 20) => {
+  const params = { page, limit };
   if (course && course !== 'ALL') params.course = course;
   if (search) params.search = search;
   if (startDate) params.startDate = startDate;
