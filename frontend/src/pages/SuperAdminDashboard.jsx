@@ -53,6 +53,7 @@ export const SuperAdminDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseStream, setNewCourseStream] = useState('');
   
   // Emergency Broadcast State
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
@@ -231,11 +232,12 @@ export const SuperAdminDashboard = () => {
     e.preventDefault();
     try {
       setIsLoading(true);
-      const res = await addCourse({ code: newCourseCode.trim().toUpperCase(), name: newCourseName.trim() }, adminSecret);
+      const res = await addCourse({ code: newCourseCode.trim().toUpperCase(), name: newCourseName.trim(), stream: newCourseStream.trim() }, adminSecret);
       if (res.success) {
         showToast('Course added successfully!');
         setNewCourseCode('');
         setNewCourseName('');
+        setNewCourseStream('');
         fetchDashboardData(adminSecret);
       } else {
         setError(res.error || 'Failed to add course.');
@@ -997,6 +999,14 @@ export const SuperAdminDashboard = () => {
               value={newCourseName}
               onChange={(e) => setNewCourseName(e.target.value)}
               className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm flex-1"
+              required
+            />
+            <input
+              type="text"
+              placeholder="Stream (e.g. Commerce)"
+              value={newCourseStream}
+              onChange={(e) => setNewCourseStream(e.target.value)}
+              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm w-40"
               required
             />
             <button
