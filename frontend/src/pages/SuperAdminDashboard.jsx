@@ -456,6 +456,19 @@ export const SuperAdminDashboard = () => {
   const approvedHodCount = hods.filter((h) => h.isApproved).length;
   const pendingHodCount = totalHodCount - approvedHodCount;
 
+  // Move useVirtualizer to component top level — calling hooks inside IIFE/callbacks violates Rules of Hooks (React Error #310)
+  const rowVirtualizer = useVirtualizer({
+    count: announcements.length,
+    getScrollElement: () => auditTableRef.current,
+    estimateSize: () => 90,
+    overscan: 10,
+  });
+
+  // Derived: active emergency broadcasts posted by super-admin
+  const activeEmergencyAlerts = announcements.filter(
+    (a) => a.type === 'EMERGENCY' && a.postedBy === 'super-admin' && a.status === 'PUBLISHED'
+  );
+
   // Secret Prompt Dialog if not authenticated
   if (!isAuthenticated) {
     return (
@@ -848,45 +861,85 @@ export const SuperAdminDashboard = () => {
 
       {/* TAB 2: All Announcements & Author Audit Log */}
       {activeTab === 'announcements' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
-          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between">
-            <div>
-              <h2 className="font-heading font-bold text-slate-800 dark:text-white text-sm">
-                College Announcements Master Audit Log ({announcements.length})
-              </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Track all notices posted across departments with author verification.
-              </p>
+        <div className="space-y-6">
+
+          {/* ── Active Emergency Broadcasts (deletable) ── */}
+          {activeEmergencyAlerts.length > 0 && (
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/60 rounded-3xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-red-200 dark:border-red-800/60 flex items-center justify-between bg-red-100/60 dark:bg-red-900/30">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 rounded-xl bg-red-600 text-white">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-heading font-bold text-red-900 dark:text-red-200 text-sm">
+                      Active Emergency Broadcasts ({activeEmergencyAlerts.length})
+                    </h2>
+                    <p className="text-[11px] text-red-700 dark:text-red-400">
+                      These alerts are live on the student feed. Delete to remove immediately.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="divide-y divide-red-200 dark:divide-red-800/40">
+                {activeEmergencyAlerts.map((alert) => (
+                  <div key={alert._id} className="flex items-start justify-between gap-4 px-6 py-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white uppercase tracking-wider">
+                          EMERGENCY
+                        </span>
+                        <span className="text-[11px] text-red-500 dark:text-red-400 font-medium">
+                          {new Date(alert.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="font-bold text-red-900 dark:text-red-100 text-sm truncate" title={alert.title}>
+                        {alert.title}
+                      </div>
+                      <div
+                        className="text-[11px] text-red-700 dark:text-red-300 mt-0.5 line-clamp-2"
+                        dangerouslySetInnerHTML={{ __html: alert.content }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => setDeleteConfirmNotice(alert)}
+                      disabled={isDeletingNotice}
+                      title="Remove this emergency alert from student feed"
+                      className="flex-shrink-0 flex items-center space-x-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-[11px] transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove Alert</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Audit Feed</span>
-          </div>
+          )}
 
-          {(() => {
-            const rowVirtualizer = useVirtualizer({
-              count: announcements.length,
-              getScrollElement: () => auditTableRef.current,
-              estimateSize: () => 90, // Approximate row height in px
-              overscan: 10,
-            });
+          {/* ── Full Audit Log Table ── */}
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between">
+              <div>
+                <h2 className="font-heading font-bold text-slate-800 dark:text-white text-sm">
+                  College Announcements Master Audit Log ({announcements.length})
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Track all notices posted across departments with author verification.
+                </p>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Audit Feed</span>
+            </div>
 
-            if (isLoading) {
-              return (
-                <div className="py-16 text-center">
-                  <div className="w-10 h-10 border-4 border-college-navy dark:border-college-gold border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading master announcement logs...</p>
-                </div>
-              );
-            }
-
-            if (announcements.length === 0) {
-              return (
-                <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-xs font-medium">
-                  No announcements posted in the database yet.
-                </div>
-              );
-            }
-
-            return (
+            {isLoading ? (
+              <div className="py-16 text-center">
+                <div className="w-10 h-10 border-4 border-college-navy dark:border-college-gold border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading master announcement logs...</p>
+              </div>
+            ) : announcements.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-xs font-medium">
+                No announcements posted in the database yet.
+              </div>
+            ) : (
               <div ref={auditTableRef} className="overflow-auto max-h-[600px] relative w-full">
                 <table className="w-full text-left border-collapse table-fixed min-w-[900px]">
                   <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shadow-sm">
@@ -900,7 +953,7 @@ export const SuperAdminDashboard = () => {
                       <th className="py-3.5 px-4 w-[10%] text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody 
+                  <tbody
                     className="divide-y divide-slate-100 dark:divide-slate-700 text-xs block relative"
                     style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
                   >
@@ -919,8 +972,8 @@ export const SuperAdminDashboard = () => {
                       const authorEmail = ann.postedByEmail || matchedHod?.email || ann.postedBy;
 
                       return (
-                        <tr 
-                          key={ann._id} 
+                        <tr
+                          key={ann._id}
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors absolute w-full flex items-center"
                           style={{
                             height: `${virtualRow.size}px`,
@@ -931,6 +984,11 @@ export const SuperAdminDashboard = () => {
                             <div className="font-bold text-slate-900 dark:text-white truncate" title={ann.title}>
                               {ann.title}
                             </div>
+                            {ann.isEmergency && (
+                              <span className="text-[10px] text-red-600 dark:text-red-400 font-bold bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800 mr-1">
+                                🚨 Emergency
+                              </span>
+                            )}
                             {ann.isPinned && (
                               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                                 Pinned
@@ -981,10 +1039,11 @@ export const SuperAdminDashboard = () => {
 
                           <td className="py-4 px-4 w-[10%]">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ann.status === 'PUBLISHED'
-                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                }`}
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                ann.status === 'PUBLISHED'
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}
                             >
                               {ann.status}
                             </span>
@@ -1006,7 +1065,7 @@ export const SuperAdminDashboard = () => {
                               <button
                                 onClick={() => setDeleteConfirmNotice(ann)}
                                 disabled={isDeletingNotice}
-                                title="Delete misleading announcement from portal"
+                                title="Delete announcement from portal"
                                 className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 flex items-center justify-center cursor-pointer h-7"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1019,8 +1078,8 @@ export const SuperAdminDashboard = () => {
                   </tbody>
                 </table>
               </div>
-            );
-          })()}
+            )}
+          </div>
         </div>
       )}
 
