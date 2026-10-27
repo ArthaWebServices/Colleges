@@ -460,8 +460,8 @@ export const SuperAdminDashboard = () => {
   const rowVirtualizer = useVirtualizer({
     count: announcements.length,
     getScrollElement: () => auditTableRef.current,
-    estimateSize: () => 90,
-    overscan: 10,
+    estimateSize: () => 72,
+    overscan: 8,
   });
 
   // Derived: active emergency broadcasts posted by super-admin
@@ -883,7 +883,7 @@ export const SuperAdminDashboard = () => {
               </div>
               <div className="divide-y divide-red-200 dark:divide-red-800/40">
                 {activeEmergencyAlerts.map((alert) => (
-                  <div key={alert._id} className="flex items-start justify-between gap-4 px-6 py-4">
+                  <div key={alert._id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 sm:px-6 py-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white uppercase tracking-wider">
@@ -905,7 +905,7 @@ export const SuperAdminDashboard = () => {
                       onClick={() => setDeleteConfirmNotice(alert)}
                       disabled={isDeletingNotice}
                       title="Remove this emergency alert from student feed"
-                      className="flex-shrink-0 flex items-center space-x-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-[11px] transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                      className="shrink-0 flex items-center justify-center space-x-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-[11px] transition-all shadow-sm disabled:opacity-50 cursor-pointer self-start sm:self-center"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Remove Alert</span>
@@ -918,7 +918,7 @@ export const SuperAdminDashboard = () => {
 
           {/* ── Full Audit Log Table ── */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h2 className="font-heading font-bold text-slate-800 dark:text-white text-sm">
                   College Announcements Master Audit Log ({announcements.length})
@@ -927,7 +927,12 @@ export const SuperAdminDashboard = () => {
                   Track all notices posted across departments with author verification.
                 </p>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Audit Feed</span>
+              <div className="flex items-center gap-2">
+                <span className="sm:hidden text-[10px] text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                  ⇄ Scroll table
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Audit Feed</span>
+              </div>
             </div>
 
             {isLoading ? (
@@ -940,143 +945,177 @@ export const SuperAdminDashboard = () => {
                 No announcements posted in the database yet.
               </div>
             ) : (
-              <div ref={auditTableRef} className="overflow-auto max-h-[600px] relative w-full">
-                <table className="w-full text-left border-collapse table-fixed min-w-[900px]">
-                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shadow-sm">
-                    <tr className="text-slate-600 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider">
-                      <th className="py-3.5 px-4 w-1/4">Notice Title</th>
-                      <th className="py-3.5 px-4 w-[15%]">Target Course(s)</th>
-                      <th className="py-3.5 px-4 w-1/5">Posted By (Author HOD)</th>
-                      <th className="py-3.5 px-4 w-[12%]">Posted On</th>
-                      <th className="py-3.5 px-4 w-[8%]">Attachment</th>
-                      <th className="py-3.5 px-4 w-[10%]">Status</th>
-                      <th className="py-3.5 px-4 w-[10%] text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody
-                    className="divide-y divide-slate-100 dark:divide-slate-700 text-xs block relative"
-                    style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-                  >
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const ann = announcements[virtualRow.index];
-                      const postDate = new Date(ann.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
-
-                      const matchedHod = hods.find((h) => h.id === ann.postedBy);
-                      const authorName = ann.postedByName !== 'HOD' ? ann.postedByName : matchedHod?.fullName || 'HOD';
-                      const authorEmail = ann.postedByEmail || matchedHod?.email || ann.postedBy;
-
-                      return (
-                        <tr
-                          key={ann._id}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors absolute w-full flex items-center"
-                          style={{
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <td className="py-4 px-4 w-1/4">
-                            <div className="font-bold text-slate-900 dark:text-white truncate" title={ann.title}>
-                              {ann.title}
-                            </div>
-                            {ann.isEmergency && (
-                              <span className="text-[10px] text-red-600 dark:text-red-400 font-bold bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800 mr-1">
-                                🚨 Emergency
-                              </span>
-                            )}
-                            {ann.isPinned && (
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                                Pinned
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="py-4 px-4 w-[15%]">
-                            <div className="flex flex-wrap gap-1">
-                              {ann.courseCodes?.map((code) => (
-                                <span
-                                  key={code}
-                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-college-navy/10 dark:bg-slate-700 text-college-navy dark:text-college-gold border border-college-navy/20 dark:border-slate-600 flex items-center gap-0.5"
-                                >
-                                  <Tag className="w-2.5 h-2.5" />
-                                  {code}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 w-1/5">
-                            <div>
-                              <div className="font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
-                              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">{authorEmail}</div>
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 w-[12%] text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
-                            {postDate}
-                          </td>
-
-                          <td className="py-4 px-4 w-[8%]">
-                            {ann.attachmentUrl ? (
-                              <a
-                                href={ann.attachmentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px]"
-                              >
-                                <span>File</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            ) : (
-                              <span className="text-slate-400 dark:text-slate-500 italic">None</span>
-                            )}
-                          </td>
-
-                          <td className="py-4 px-4 w-[10%]">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                ann.status === 'PUBLISHED'
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                              }`}
-                            >
-                              {ann.status}
-                            </span>
-                          </td>
-
-                          <td className="py-4 px-4 w-[10%] text-right flex justify-end">
-                            <div className="flex items-center justify-end space-x-2">
-                              <button
-                                onClick={() => {
-                                  setEditingAnnouncement(ann);
-                                  setEditTitle(ann.title);
-                                  setEditContent(ann.content);
-                                }}
-                                title="Edit violating content"
-                                className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-[11px] transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center cursor-pointer h-7"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirmNotice(ann)}
-                                disabled={isDeletingNotice}
-                                title="Delete announcement from portal"
-                                className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-[11px] transition-all border border-rose-200 dark:border-rose-800 flex items-center justify-center cursor-pointer h-7"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+              <div className="relative w-full">
+                <div
+                  ref={auditTableRef}
+                  className="overflow-x-auto overflow-y-auto max-h-[620px] w-full"
+                >
+                  <table className="w-full text-left border-collapse min-w-[1050px]">
+                    <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shadow-sm text-slate-600 dark:text-slate-300 text-[11px] font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3.5 px-4 w-[28%] min-w-[240px]">Notice Title</th>
+                        <th className="py-3.5 px-4 w-[14%] min-w-[130px]">Target Course(s)</th>
+                        <th className="py-3.5 px-4 w-[18%] min-w-[170px]">Posted By (Author HOD)</th>
+                        <th className="py-3.5 px-4 w-[14%] min-w-[130px]">Posted On</th>
+                        <th className="py-3.5 px-4 w-[8%] min-w-[85px]">Attachment</th>
+                        <th className="py-3.5 px-4 w-[10%] min-w-[95px]">Status</th>
+                        <th className="py-3.5 px-4 w-[8%] min-w-[85px] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-xs">
+                      {rowVirtualizer.getVirtualItems().length > 0 && (rowVirtualizer.getVirtualItems()[0]?.start || 0) > 0 && (
+                        <tr>
+                          <td style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} colSpan={7} className="p-0 border-0" />
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      )}
+                      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const ann = announcements[virtualRow.index];
+                        if (!ann) return null;
+
+                        const postDate = new Date(ann.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+
+                        const matchedHod = hods.find((h) => h.id === ann.postedBy);
+                        const authorName = ann.postedByName && ann.postedByName !== 'HOD' ? ann.postedByName : matchedHod?.fullName || 'HOD';
+                        const authorEmail = ann.postedByEmail || matchedHod?.email || ann.postedBy;
+
+                        return (
+                          <tr
+                            key={ann._id}
+                            data-index={virtualRow.index}
+                            ref={rowVirtualizer.measureElement}
+                            className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors"
+                          >
+                            <td className="py-3.5 px-4">
+                              <div className="font-bold text-slate-900 dark:text-white line-clamp-2" title={ann.title}>
+                                {ann.title}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                {ann.isEmergency && (
+                                  <span className="text-[10px] text-red-600 dark:text-red-400 font-bold bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
+                                    🚨 Emergency
+                                  </span>
+                                )}
+                                {ann.isPinned && (
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                    📌 Pinned
+                                  </span>
+                                )}
+                                {ann.type && ann.type !== 'NOTICE' && !ann.isEmergency && (
+                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                                    {ann.type}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-wrap gap-1">
+                                {ann.courseCodes && ann.courseCodes.length > 0 ? (
+                                  ann.courseCodes.map((code) => (
+                                    <span
+                                      key={code}
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-college-navy/10 dark:bg-slate-700 text-college-navy dark:text-college-gold border border-college-navy/20 dark:border-slate-600 flex items-center gap-1 whitespace-nowrap"
+                                    >
+                                      <Tag className="w-2.5 h-2.5 shrink-0" />
+                                      {code}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-slate-400 dark:text-slate-500 italic text-[11px]">All Courses</span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 dark:text-white truncate" title={authorName}>
+                                  {authorName}
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate" title={authorEmail}>
+                                  {authorEmail}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-xs">
+                              {postDate}
+                            </td>
+
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              {ann.attachmentUrl ? (
+                                <a
+                                  href={ann.attachmentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-bold text-xs"
+                                >
+                                  <span>View</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500 italic text-xs">None</span>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span
+                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  ann.status === 'PUBLISHED'
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
+                                {ann.status}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingAnnouncement(ann);
+                                    setEditTitle(ann.title);
+                                    setEditContent(ann.content);
+                                  }}
+                                  title="Edit violating content"
+                                  className="p-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 rounded-lg font-bold transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center cursor-pointer shrink-0"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmNotice(ann)}
+                                  disabled={isDeletingNotice}
+                                  title="Delete announcement from portal"
+                                  className="p-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 rounded-lg font-bold transition-all border border-rose-200 dark:border-rose-800 flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-50"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {rowVirtualizer.getVirtualItems().length > 0 && (
+                        (() => {
+                          const items = rowVirtualizer.getVirtualItems();
+                          const lastItem = items[items.length - 1];
+                          const remaining = rowVirtualizer.getTotalSize() - (lastItem?.end || 0);
+                          return remaining > 0 ? (
+                            <tr>
+                              <td style={{ height: `${remaining}px` }} colSpan={7} className="p-0 border-0" />
+                            </tr>
+                          ) : null;
+                        })()
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
