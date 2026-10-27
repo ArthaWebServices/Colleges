@@ -9,9 +9,6 @@ const { apiRateLimiter } = require('./middleware/rateLimiter');
 const compression = require('compression');
 const zlib = require('zlib');
 
-// Initialize database & cache
-connectDB();
-initRedis();
 
 const courseRoutes = require('./routes/courseRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
@@ -159,70 +156,80 @@ app.use((err, req, res, next) => {
 // Start Server if called directly
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 5000;
-  connectDB().then(async () => {
-    const { ensureCoursesExist } = require('./utils/ensureCourses');
-    await ensureCoursesExist();
 
-    app.listen(PORT, () => {
-      console.log(`[Server Running]: http://localhost:${PORT}`);
+  const startServer = async () => {
+    try {
+      // Connect to MongoDB & ensure default courses are ready before accepting requests
+      await connectDB();
+      // Initialize Redis cache connection
+      await initRedis();
 
-      // ──────────────────────────────────────────────────────────────
-      // Keep-alive self-ping (prevents Render free tier spin-down)
-      // ──────────────────────────────────────────────────────────────
-      const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://gsc-announcement-backend.onrender.com';
-      const PING_INTERVAL_MS = 5 * 60 * 1000;
+      app.listen(PORT, () => {
+        console.log(`[Server Running]: http://localhost:${PORT}`);
 
-      const keepAlive = () => {
-        const url = new URL('/api/health', RENDER_URL);
-        const client = url.protocol === 'https:' ? require('https') : require('http');
-        client.get(url.toString(), (res) => {
-          console.log(`[Keep-Alive] ✅ Self-ping successful: ${res.statusCode}`);
-        }).on('error', (err) => {
-          console.error(`[Keep-Alive] ❌ Self-ping failed: ${err.message}`);
-        });
-      };
+        // ──────────────────────────────────────────────────────────────
+        // Keep-alive self-ping (prevents Render free tier spin-down)
+        // ──────────────────────────────────────────────────────────────
+        const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://gsc-announcement-backend.onrender.com';
+        const PING_INTERVAL_MS = 5 * 60 * 1000;
 
-      keepAlive();
-      setInterval(keepAlive, PING_INTERVAL_MS);
-      console.log(`[Keep-Alive] 🔁 Self-ping started → ${RENDER_URL}/api/health (every 5 min)`);
-
-      // ──────────────────────────────────────────────────────────────
-      // Scheduled Publishing Cron — runs every minute
-      // Finds DRAFT announcements with publishAt <= now and publishes them
-      // ──────────────────────────────────────────────────────────────
-      const cron = require('node-cron');
-      const Announcement = require('./models/Announcement');
-      const { triggerPushNotifications } = require('./utils/notificationDispatcher');
-
-      cron.schedule('* * * * *', async () => {
-        try {
-          const now = new Date();
-          const scheduled = await Announcement.find({
-            status: 'DRAFT',
-            publishAt: { $lte: now, $ne: null },
+        const keepAlive = () => {
+          const url = new URL('/api/health', RENDER_URL);
+          const client = url.protocol === 'https:' ? require('https') : require('http');
+          client.get(url.toString(), (res) => {
+            console.log(`[Keep-Alive] ✅ Self-ping successful: ${res.statusCode}`);
+          }).on('error', (err) => {
+            console.error(`[Keep-Alive] ❌ Self-ping failed: ${err.message}`);
           });
+        };
 
-          if (scheduled.length === 0) return;
+        keepAlive();
+        setInterval(keepAlive, PING_INTERVAL_MS);
+        console.log(`[Keep-Alive] 🔁 Self-ping started → ${RENDER_URL}/api/health (every 5 min)`);
 
-          console.log(`[Scheduler] 📅 Publishing ${scheduled.length} scheduled announcement(s)...`);
+        // ──────────────────────────────────────────────────────────────
+        // Scheduled Publishing Cron — runs every minute
+        // Finds DRAFT announcements with publishAt <= now and publishes them
+        // ──────────────────────────────────────────────────────────────
+        const cron = require('node-cron');
+        const Announcement = require('./models/Announcement');
+        const { triggerPushNotifications } = require('./utils/notificationDispatcher');
 
-          for (const ann of scheduled) {
-            ann.status = 'PUBLISHED';
-            ann.publishAt = null; // clear the field after publishing
-            await ann.save();
-            triggerPushNotifications(ann, app.get('vapidKeys')).catch((err) =>
-              console.error(`[Scheduler Push Error] ${ann._id}:`, err.message)
-            );
-            console.log(`[Scheduler] ✅ Published: "${ann.title}" (${ann._id})`);
+        cron.schedule('* * * * *', async () => {
+          try {
+            const now = new Date();
+            const scheduled = await Announcement.find({
+              status: 'DRAFT',
+              publishAt: { $lte: now, $ne: null },
+            });
+
+            if (scheduled.length === 0) return;
+
+            console.log(`[Scheduler] 📅 Publishing ${scheduled.length} scheduled announcement(s)...`);
+
+            for (const ann of scheduled) {
+              ann.status = 'PUBLISHED';
+              ann.publishAt = null; // clear the field after publishing
+              await ann.save();
+              triggerPushNotifications(ann, app.get('vapidKeys')).catch((err) =>
+                console.error(`[Scheduler Push Error] ${ann._id}:`, err.message)
+              );
+              console.log(`[Scheduler] ✅ Published: "${ann.title}" (${ann._id})`);
+            }
+          } catch (err) {
+            console.error('[Scheduler] ❌ Error during scheduled publish check:', err.message);
           }
-        } catch (err) {
-          console.error('[Scheduler] ❌ Error during scheduled publish check:', err.message);
-        }
-      });
+        });
 
-      console.log('[Scheduler] ⏰ Scheduled publishing cron started (every minute).');
-    });
-  });
+        console.log('[Scheduler] ⏰ Scheduled publishing cron started (every minute).');
+      });
+    } catch (err) {
+      console.error('[Startup Error]: Failed to start server:', err.message);
+      process.exit(1);
+    }
+  };
+
+  startServer();
 }
 
 module.exports = app;

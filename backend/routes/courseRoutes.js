@@ -9,9 +9,12 @@ const Course = require('../models/Course');
  */
 router.get('/', async (req, res) => {
   try {
-    const { ensureCoursesExist } = require('../utils/ensureCourses');
-    await ensureCoursesExist();
-    const courses = await Course.find().sort({ code: 1 });
+    let courses = await Course.find().sort({ code: 1 });
+    if (courses.length === 0) {
+      const { ensureCoursesExist } = require('../utils/ensureCourses');
+      await ensureCoursesExist();
+      courses = await Course.find().sort({ code: 1 });
+    }
     res.json({
       success: true,
       count: courses.length,

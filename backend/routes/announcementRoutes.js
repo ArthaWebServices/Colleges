@@ -38,8 +38,6 @@ const validateCourseCodesExist = async (courseCodes) => {
   if (courseCodes.includes('ALL') || (courseCodes.length === 1 && String(courseCodes[0]).trim().toUpperCase() === 'ALL')) {
     return { valid: true, codes: ['ALL'] };
   }
-  const { ensureCoursesExist } = require('../utils/ensureCourses');
-  await ensureCoursesExist();
   const formattedCodes = courseCodes.map((c) => String(c).trim().toUpperCase());
   const uniqueCodes = [...new Set(formattedCodes)];
   const existingCourses = await Course.find({ code: { $in: uniqueCodes } });
