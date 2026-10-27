@@ -11,8 +11,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: '/logo.png', // Fallback icon path (public folder logo)
-    badge: '/logo.png',
+    icon: data.icon || '/notification-icon.png',
+    badge: data.badge || '/notification-icon.png',
     data: {
       url: data.url || '/'
     },

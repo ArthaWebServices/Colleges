@@ -50,6 +50,8 @@ async function triggerPushNotifications(announcement, vapidKeys) {
     const payload = {
       title: isEmergency ? `🚨 URGENT: ${title}` : `${prefix}: ${label}`,
       body: isEmergency ? (courseCodes.length > 0 ? `Affects: ${courseCodes.join(', ')}` : title) : title,
+      icon: '/notification-icon.png',
+      badge: '/notification-icon.png',
       url: `/#notices`
     };
 
